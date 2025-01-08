@@ -1,4 +1,4 @@
 __pycache__/
 *.egg-info/
 .DS_Store
-
+*.jsonl
