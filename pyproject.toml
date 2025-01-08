@@ -1,0 +1,10 @@
+[build-system]
+requires      = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name         = "cybershuttle-benchmarks"
+version      = "0.0.1"
+description  = "Collection of benchmarks for Cybershuttle"
+authors      = [{ name = "Yasith Jayawardana", email = "yasith.j@outlook.com" }]
+dependencies = ["paramiko", "rich"]

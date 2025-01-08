@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 import os
 import paramiko
-import paramiko.client
 
 
 class TestCase(ABC):

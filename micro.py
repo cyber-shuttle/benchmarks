@@ -3,10 +3,13 @@
 # MICRO BENCHMARKS
 
 import time
+import random
 import argparse
+import rich
+import rich.progress
 from sdk import AgentSDK, SSHSDK, SDK
 
-def test_latency(sdk: SDK, task: str, size_kb: int, reps: int) -> float:
+def test_latency(sdk: SDK, task: str, size_kb: int, reps: int, warmup=0.1) -> float:
     """
     Measure the round-trip latency
     
@@ -16,16 +19,25 @@ def test_latency(sdk: SDK, task: str, size_kb: int, reps: int) -> float:
     elif task == "dload":
         fn = lambda: sdk.dload(size_kb)
     latencies = []
-    while len(latencies) != reps:
+    progress = rich.progress.Progress()
+    progress.start()
+    prog_bar = progress.add_task("counter", total=reps)
+    r = int(reps * warmup)
+    counter = 0
+    while counter != reps:
         start_time = time.time_ns()
         fn()
         end_time = time.time_ns()
-        latencies.append((end_time - start_time) / 1e9)
+        progress.update(prog_bar, advance=1)
+        counter += 1
+        if counter > r:
+          latencies.append((end_time - start_time) / 1e9)
+    progress.stop()
     avg_latency = sum(latencies) / len(latencies)
     return avg_latency
 
 
-def test_thruput(sdk: SDK, task: str, size_kb: int, reps: int) -> float:
+def test_thruput(sdk: SDK, task: str, size_kb: int, reps: int, warmup=0.1) -> float:
     """
     Measure the thruput
     
@@ -34,15 +46,35 @@ def test_thruput(sdk: SDK, task: str, size_kb: int, reps: int) -> float:
         fn = lambda: sdk.uload(size_kb)
     elif task == "dload":
         fn = lambda: sdk.dload(size_kb)
-    start_time = time.time_ns()
+    r = int(reps * warmup)
     counter = 0
+    progress = rich.progress.Progress()
+    progress.start()
+    prog_bar = progress.add_task("counter", total=reps)
     while counter != reps:
+        if counter == r:
+            start_time = time.time_ns()
         fn()
+        progress.update(prog_bar, advance=1)
         counter += 1
     end_time = time.time_ns()
+    progress.stop()
     total_size_kb = (size_kb * reps)
     thruput = total_size_kb / 1024 / (end_time - start_time) * 1e9
     return thruput
+
+def test_load(sdk: SDK, size_kb: int, rate: int):
+    """
+    Load the system
+    
+    """
+    while True:
+        fn = lambda: random.choice([sdk.uload, sdk.dload])(size_kb)
+        start_time = time.time_ns()
+        fn()
+        end_time = time.time_ns()
+        duration = (end_time - start_time) / 1e9
+        time.sleep(max(0, 1/rate - duration))
 
 if __name__ == "__main__":
 
@@ -76,8 +108,8 @@ if __name__ == "__main__":
     else:
         raise ValueError("Invalid connection type. Choose 'agent' or 'ssh'.")
 
+    sdk.setup(linspace)
     if args.task == "bench":
-        sdk.setup(linspace)
         latency_ul = test_latency(sdk, "uload", args.size, args.reps)
         print(f"Latency (U): {latency_ul:.6f} s")
         latency_dl = test_latency(sdk, "dload", args.size, args.reps)
@@ -87,6 +119,6 @@ if __name__ == "__main__":
         thruput_dl = test_thruput(sdk, "dload", args.size, args.reps)
         print(f"Thruput (D): {thruput_dl:.6f} MB/s")
     elif args.task == "load":
-        pass
+        test_load(sdk, args.size, args.rate)
     else:
         raise ValueError("Invalid task. Choose 'bench' or 'load'.")

@@ -14,7 +14,7 @@ options:
   --proxy PROXY        [SSH] Proxy Addr (user@hostname)
   --remote REMOTE      [SSH] Remote Addr (user@hostname)
   --task {bench,load}  Task to perform
-  --size SIZE          [Bench] Payload size (KB)
+  --size SIZE          Payload size (KB)
   --reps REPS          [Bench] Number of repetitions
   --rate RATE          [Load] Request rate (req/s)
 
