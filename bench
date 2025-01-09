@@ -8,10 +8,10 @@ AGENT_CONN=agent
 AGENT_API_URL=https://api.gateway.cybershuttle.org/api/v1/agent
 AGENT_ID=abcde
 
-for size in 2 4 8 16 32 64 128 256 512 1024 2048 4096 8192; do
-  ./micro.py --conn=$SSH_CONN --proxy=$SSH_PROXY_ADDR --remote=$SSH_REMOTE_ADDR --task=bench --reps=50 --size=$size
-done
+# for size in 2 4 8 16 32 64 128 256 512 1024 2048 4096 8192; do
+#   ./micro.py --conn=$SSH_CONN --proxy=$SSH_PROXY_ADDR --remote=$SSH_REMOTE_ADDR --task=bench --reps=50 --size=$size --dest=home_idle_ssh.jsonl
+# done
 
 for size in 2 4 8 16 32 64 128 256 512 1024 2048 4096 8192; do
-  ./micro.py --conn=$AGENT_CONN --api_url=$AGENT_API_URL --agent_id=$AGENT_ID --task=bench --reps=50 --size=$size
+  ./micro.py --conn=$AGENT_CONN --api=$AGENT_API_URL --agent=$AGENT_ID --task=bench --reps=50 --size=$size --dest=home_idle_agent.jsonl
 done

@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 import os
 import paramiko
 import requests
+import time
+import base64
 
 
 class TestCase(ABC):
@@ -43,6 +45,8 @@ class AgentSDK(SDK):
   ----------------------------------------------------------------------------
   """
 
+  # TODO next step - setup/teardown create persistent connection to agent
+
   api_url: str
   agent_id: str
 
@@ -50,21 +54,50 @@ class AgentSDK(SDK):
     self.api_url = api_url
     self.agent_id = agent_id
 
+  def __exec_command__(self, cmd: str, wait_ms: int = 100) -> bytes:
+    # send request and get execution id
+    res = requests.post(f"{self.api_url}/executecommandrequest", json={
+      "agentId": self.agent_id,
+      "workingDir": ".",
+      "arguments": ["sh", "-c", cmd]
+    })
+    assert res.ok == True
+    data = res.json()
+    assert data["error"] is None
+    exc_id = data["executionId"]
+    # wait for execution to complete (polling until available)
+    data = None
+    while True:
+      res = requests.get(f"{self.api_url}/executecommandresponse/{exc_id}")
+      assert res.ok == True
+      data = res.json()
+      if data["available"]:
+        break
+      time.sleep(wait_ms / 1000)
+    return str(data["responseString"]).encode()
+
   def setup(self, size_kb: int) -> None:
     res = requests.get(f"{self.api_url}/{self.agent_id}")
     assert res.status_code == 202
     assert res.json()["agentUp"] == True
+    res = self.__exec_command__(f"base64 < /dev/urandom | head -c {size_kb * 1024} > data_{size_kb}k")
 
   def teardown(self) -> None:
+    # nothing to teardown for now
     pass
 
   def uload(self, size_kb: int) -> bytes:
-    return b""
+    data = base64.b64encode(os.urandom(size_kb * 1024))[:size_kb * 1024]
+    res = self.__exec_command__(f"echo {data} > data_{size_kb}k")
+    return data
 
   def dload(self, size_kb: int) -> bytes:
-    return b""
+    data = self.__exec_command__(f"cat data_{size_kb}k")
+    return data
 
   def exec(self, cmd: str, input: bytes) -> tuple[bytes, bytes]:
+    res = self.__exec_command__(cmd)
+    # doing nothing with the input bytes for now (no data channel yet)
     return b"", b""
 
 
@@ -115,7 +148,7 @@ class SSHSDK(SDK):
     self.remote_client.connect(username=self.remote_uname, hostname=self.remote_host, sock=self.bridge_channel)
 
     # create data file
-    (stdin, stdout, stderr) = self.remote_client.exec_command(f"head -c {size_kb * 1024} < /dev/urandom > data_{size_kb}k")
+    (stdin, stdout, stderr) = self.remote_client.exec_command(f"base64 < /dev/urandom | head -c {size_kb * 1024} > data_{size_kb}k")
 
   def teardown(self) -> None:
     self.remote_client.close()
@@ -123,7 +156,7 @@ class SSHSDK(SDK):
     self.proxy_client.close()
 
   def uload(self, size_kb: int) -> None:
-    data = os.urandom(size_kb * 1024)
+    data = base64.b64encode(os.urandom(size_kb * 1024))[:size_kb * 1024]
     stdin, stdout, stderr = self.remote_client.exec_command(f"cat > data_{size_kb}k")
     stdin.write(data)
     stdin.flush()

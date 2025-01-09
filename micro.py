@@ -75,6 +75,7 @@ def test_thruput(sdk: SDK, task: str, size_kb: int, reps: int, warmup=0.1) -> fl
     progress.stop()
     return thruput
 
+
 def test_load(sdk: SDK, size_kb: int, rate: int):
     """
     Load the system
@@ -94,6 +95,7 @@ def test_load(sdk: SDK, size_kb: int, rate: int):
         time.sleep(max(0, 1/rate - duration))
     sdk.teardown()
 
+
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
@@ -110,6 +112,9 @@ if __name__ == "__main__":
     parser.add_argument("--size", type=int, default=32, help="[Bench] Payload size (KB)")
     parser.add_argument("--reps", type=int, default=100, help="[Bench] Number of repetitions")
     parser.add_argument("--rate", type=int, default=1, help="[Load] Request rate (req/s)")
+
+    # args to save results
+    parser.add_argument("--dest", type=str, help="Destination to save results")
     
     # parse args
     args = parser.parse_args()
@@ -143,7 +148,7 @@ if __name__ == "__main__":
             thruput_dl=thruput_dl
         )
         line = json.dumps(result)
-        with open("results.jsonl", "a") as f:
+        with open(args.dest, "a") as f:
             f.write(line + "\n")
         print("latency_ul,latency_dl,thruput_ul,thruput_dl")
         print(f"{latency_ul:.6f},{latency_dl:.6f},{thruput_ul:.6f},{thruput_dl:.6f}")
