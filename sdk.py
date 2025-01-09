@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import os
 import paramiko
+import requests
 
 
 class TestCase(ABC):
@@ -50,7 +51,9 @@ class AgentSDK(SDK):
     self.agent_id = agent_id
 
   def setup(self, size_kb: int) -> None:
-    pass
+    res = requests.get(f"{self.api_url}/{self.agent_id}")
+    assert res.status_code == 202
+    assert res.json()["agentUp"] == True
 
   def teardown(self) -> None:
     pass

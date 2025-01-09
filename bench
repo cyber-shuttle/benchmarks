@@ -4,16 +4,14 @@ SSH_CONN=ssh
 SSH_PROXY_ADDR=ubuntu@3.142.234.94
 SSH_REMOTE_ADDR=ubuntu@3.142.234.94
 
-./micro.py --conn=$SSH_CONN --proxy=$SSH_PROXY_ADDR --remote=$SSH_REMOTE_ADDR --task=bench --reps=50 --size=2
-./micro.py --conn=$SSH_CONN --proxy=$SSH_PROXY_ADDR --remote=$SSH_REMOTE_ADDR --task=bench --reps=50 --size=4
-./micro.py --conn=$SSH_CONN --proxy=$SSH_PROXY_ADDR --remote=$SSH_REMOTE_ADDR --task=bench --reps=50 --size=8
-./micro.py --conn=$SSH_CONN --proxy=$SSH_PROXY_ADDR --remote=$SSH_REMOTE_ADDR --task=bench --reps=50 --size=16
-./micro.py --conn=$SSH_CONN --proxy=$SSH_PROXY_ADDR --remote=$SSH_REMOTE_ADDR --task=bench --reps=50 --size=32
-./micro.py --conn=$SSH_CONN --proxy=$SSH_PROXY_ADDR --remote=$SSH_REMOTE_ADDR --task=bench --reps=50 --size=64
-./micro.py --conn=$SSH_CONN --proxy=$SSH_PROXY_ADDR --remote=$SSH_REMOTE_ADDR --task=bench --reps=50 --size=128
-./micro.py --conn=$SSH_CONN --proxy=$SSH_PROXY_ADDR --remote=$SSH_REMOTE_ADDR --task=bench --reps=50 --size=256
-./micro.py --conn=$SSH_CONN --proxy=$SSH_PROXY_ADDR --remote=$SSH_REMOTE_ADDR --task=bench --reps=50 --size=512
-./micro.py --conn=$SSH_CONN --proxy=$SSH_PROXY_ADDR --remote=$SSH_REMOTE_ADDR --task=bench --reps=50 --size=1024
-./micro.py --conn=$SSH_CONN --proxy=$SSH_PROXY_ADDR --remote=$SSH_REMOTE_ADDR --task=bench --reps=50 --size=2048
-./micro.py --conn=$SSH_CONN --proxy=$SSH_PROXY_ADDR --remote=$SSH_REMOTE_ADDR --task=bench --reps=50 --size=4096
-./micro.py --conn=$SSH_CONN --proxy=$SSH_PROXY_ADDR --remote=$SSH_REMOTE_ADDR --task=bench --reps=50 --size=8192
+AGENT_CONN=agent
+AGENT_API_URL=https://api.gateway.cybershuttle.org/api/v1/agent
+AGENT_ID=abcde
+
+for size in 2 4 8 16 32 64 128 256 512 1024 2048 4096 8192; do
+  ./micro.py --conn=$SSH_CONN --proxy=$SSH_PROXY_ADDR --remote=$SSH_REMOTE_ADDR --task=bench --reps=50 --size=$size
+done
+
+for size in 2 4 8 16 32 64 128 256 512 1024 2048 4096 8192; do
+  ./micro.py --conn=$AGENT_CONN --api_url=$AGENT_API_URL --agent_id=$AGENT_ID --task=bench --reps=50 --size=$size
+done
