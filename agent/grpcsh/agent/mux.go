@@ -1,66 +1,63 @@
 package agent
 
-import pb "grpcsh/pb"
+import (
+	pb "grpcsh/pb"
+	"log"
+)
 
-// Router handles message routing between virtual channels
-type Router struct {
+type Bus struct {
 	channels  map[string]chan *pb.PeerMessage
-	bus       pb.RouterService_ConnectClient
+	stream    pb.RouterService_ConnectClient
 	intercept chan *pb.PeerMessage
 }
 
-// New creates a router and starts reading from the stream
-func CreateBus(bus pb.RouterService_ConnectClient) *Router {
-	r := &Router{
+func CreateBus(stream pb.RouterService_ConnectClient) *Bus {
+	b := &Bus{
 		channels: make(map[string]chan *pb.PeerMessage),
-		bus:      bus,
+		stream:   stream,
 	}
 
-	// Start receiving messages
 	go func() {
 		for {
-			peerMessage, err := r.bus.Recv()
+			peerMessage, err := b.stream.Recv()
 			if err != nil {
 				return
 			}
-			// whenever peerMessage is a command, push it to intercept
-			if ch := r.channels[peerMessage.Channel]; ch != nil {
+			if ch := b.channels[peerMessage.Channel]; ch != nil {
 				if peerMessage.Data.(*pb.PeerMessage_Command) != nil {
-					r.intercept <- peerMessage
+					b.intercept <- peerMessage
 				} else {
 					ch <- peerMessage
 				}
 			}
 		}
 	}()
-	return r
+	log.Println("Bus created")
+	return b
 }
 
-// Channel gets or creates a channel
-func (r *Router) Channel(id string) chan *pb.PeerMessage {
-	if ch := r.channels[id]; ch != nil {
+func (b *Bus) Channel(id string) chan *pb.PeerMessage {
+	if ch := b.channels[id]; ch != nil {
 		return ch
 	}
 	ch := make(chan *pb.PeerMessage, 10)
-	r.channels[id] = ch
+	b.channels[id] = ch
 
-	// Start sender for this channel
 	go func() {
 		for message := range ch {
-			r.bus.Send(message)
+			b.stream.Send(message)
 		}
 	}()
 	return ch
 }
 
-func (r *Router) Intercept() chan *pb.PeerMessage {
-	return r.intercept
+func (b *Bus) Intercept() chan *pb.PeerMessage {
+	return b.intercept
 }
 
-// Close closes a channel
-func (r *Router) Close(id string) {
-	if ch := r.channels[id]; ch != nil {
+func (b *Bus) Close(id string) {
+	if ch := b.channels[id]; ch != nil {
 		close(ch)
-		delete(r.channels, id)
+		delete(b.channels, id)
 	}
 }

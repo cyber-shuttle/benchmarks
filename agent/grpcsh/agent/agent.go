@@ -20,10 +20,11 @@ type executorServer struct {
 }
 
 // global variables
-var bus *Router
+var bus *Bus
 var channelSvcClient pb.ChannelServiceClient
 
 func (s *executorServer) Exec(stream pb.ExecutorService_ExecServer) error {
+	log.Println("Received Exec command")
 	command, err := stream.Recv()
 	if err != nil {
 		return fmt.Errorf("failed to receive command: %w", err)
@@ -33,10 +34,12 @@ func (s *executorServer) Exec(stream pb.ExecutorService_ExecServer) error {
 	if peer == "local" {
 		go execLocal(stream, command)
 	} else {
-		channel, err := channelSvcClient.CreateChannel(context.Background(), &emptypb.Empty{})
+		ctx := context.Background()
+		channel, err := channelSvcClient.CreateChannel(ctx, &emptypb.Empty{})
 		if err != nil {
 			return fmt.Errorf("failed to create channel: %w", err)
 		}
+		log.Println("Got channel:", channel.Id)
 		ch := bus.Channel(channel.Id)
 		command := &pb.PeerMessage{
 			Channel: channel.Id,
@@ -49,7 +52,6 @@ func (s *executorServer) Exec(stream pb.ExecutorService_ExecServer) error {
 }
 
 func execLocal(stream pb.ExecutorService_ExecServer, command *pb.Message) error {
-	// create subprocess for a locally-initiated command
 	script := command.Data.(*pb.Message_Command).Command
 	peer := command.Peer
 	cmd := exec.Command("bash", "-c", script)
@@ -69,7 +71,6 @@ func execLocal(stream pb.ExecutorService_ExecServer, command *pb.Message) error 
 		return fmt.Errorf("failed to start command: %w", err)
 	}
 
-	// handle stdout, and stderr
 	handleStream := func(reader io.Reader, transform func([]byte) *pb.Result) {
 		buf := make([]byte, 1024)
 		for {
@@ -78,11 +79,11 @@ func execLocal(stream pb.ExecutorService_ExecServer, command *pb.Message) error 
 				if err == io.EOF {
 					return
 				}
-				log.Printf("Error reading stream: %v", err)
+				log.Println("Error reading stream:", err)
 				return
 			}
 			if err := stream.Send(transform(buf[:n])); err != nil {
-				log.Printf("Error sending stream: %v", err)
+				log.Println("Error sending stream:", err)
 				return
 			}
 		}
@@ -103,7 +104,8 @@ func execLocal(stream pb.ExecutorService_ExecServer, command *pb.Message) error 
 				if err == io.EOF {
 					return
 				}
-				log.Fatal(err)
+				log.Println("Error receiving stream:", err)
+				return
 			}
 			chunk := message.Data.(*pb.Message_Stdin).Stdin
 			stdin.Write(chunk)
@@ -113,8 +115,7 @@ func execLocal(stream pb.ExecutorService_ExecServer, command *pb.Message) error 
 }
 
 func forwardRemote(stream pb.ExecutorService_ExecServer, channel chan *pb.PeerMessage, command *pb.PeerMessage) {
-	// ch has the exec command added to it, it will be automatically sent to router
-	// take care of stdin, stdout, and stderr
+	channel <- command
 	go func() {
 		for {
 			message, err := stream.Recv()
@@ -122,7 +123,8 @@ func forwardRemote(stream pb.ExecutorService_ExecServer, channel chan *pb.PeerMe
 				if err == io.EOF {
 					return
 				}
-				log.Fatal(err)
+				log.Println("Error receiving stream:", err)
+				return
 			}
 			channel <- &pb.PeerMessage{
 				Peer:    command.Peer,
@@ -133,17 +135,23 @@ func forwardRemote(stream pb.ExecutorService_ExecServer, channel chan *pb.PeerMe
 	for msg := range channel {
 		stdout := msg.Data.(*pb.PeerMessage_Stdout).Stdout
 		if stdout != nil {
-			stream.Send(&pb.Result{
+			if err := stream.Send(&pb.Result{
 				Peer: msg.Peer,
 				Data: &pb.Result_Stdout{Stdout: stdout},
-			})
+			}); err != nil {
+				log.Println("Error sending stdout:", err)
+				return
+			}
 		}
 		stderr := msg.Data.(*pb.PeerMessage_Stderr).Stderr
 		if stderr != nil {
-			stream.Send(&pb.Result{
+			if err := stream.Send(&pb.Result{
 				Peer: msg.Peer,
 				Data: &pb.Result_Stderr{Stderr: stderr},
-			})
+			}); err != nil {
+				log.Println("Error sending stderr:", err)
+				return
+			}
 		}
 	}
 }
@@ -177,7 +185,8 @@ func execRemote(channel chan *pb.PeerMessage, command *pb.PeerMessage) error {
 				if err == io.EOF {
 					break
 				}
-				log.Fatal(err)
+				log.Println("Error reading stream:", err)
+				return
 			}
 			channel <- transform(command.Channel, command.Peer, buf[:n])
 		}
@@ -200,72 +209,82 @@ func execRemote(channel chan *pb.PeerMessage, command *pb.PeerMessage) error {
 	return nil
 }
 
-func Start() {
+func Start(peerID string, routerUrl string, socketPath string) {
 
 	eSig := make(chan struct{})
 	rSig := make(chan struct{})
 
-	// Create server to process executor requests
+	// server to process executor requests
 	go func() {
 		defer close(eSig)
 
 		s := grpc.NewServer()
 		pb.RegisterExecutorServiceServer(s, &executorServer{})
 
-		// Serve gRPC services on agent.sock
-		lis, err := net.Listen("unix", "agent.sock")
+		// Serve on socketPath
+		lis, err := net.Listen("unix", socketPath)
 		if err != nil {
-			log.Printf("failed to listen: %v", err)
+			log.Println("failed to listen:", err)
 			return
 		}
 		defer lis.Close()
+		log.Println("started server on unix://" + socketPath)
 
-		log.Println("Executor service running on unix:agent.sock")
+		log.Println("[gRPC] serving ExecutorService")
 		if s.Serve(lis) != nil {
-			log.Printf("failed to serve: %v", err)
-			return
+			log.Println("[gRPC] failed to serve gRPC over socket")
 		}
-		defer s.GracefulStop()
+		s.GracefulStop()
 	}()
 
-	// Create client to connect to router
+	// connector to router
 	go func() {
 		defer close(rSig)
 
-		routerUrl := "unix:router.sock"
-		// Setup gRPC services
 		conn, err := grpc.NewClient(routerUrl, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
-			log.Fatalf("did not connect: %v", err)
+			log.Println("did not connect:", err)
+			return
 		}
 		defer conn.Close()
 
 		channelSvcClient = pb.NewChannelServiceClient(conn)
 		routerSvcClient := pb.NewRouterServiceClient(conn)
 
+		ctx := context.Background()
+		stream, err := routerSvcClient.Connect(ctx)
+		if err != nil {
+			log.Println("Error creating stream:", err)
+			return
+		}
+		defer stream.CloseSend()
+
 		func() {
-			stream, err := routerSvcClient.Connect(context.Background())
+			err := stream.Send(&pb.PeerMessage{Peer: peerID})
 			if err != nil {
-				log.Fatalf("Error creating stream: %v", err)
+				log.Println("Error sending peer ID:", err)
+				return
 			}
-			defer stream.CloseSend()
-			bus = CreateBus(stream)
+			log.Println("Sent peer ID:", peerID)
 		}()
 
-		// intercept commands from router
-		go func() {
-			intercept := bus.Intercept()
-			for message := range intercept {
-				ch := bus.Channel(message.Channel)
-				execRemote(ch, message)
-			}
-		}()
+		bus = CreateBus(stream)
+		intercept := bus.Intercept()
+
+		for message := range intercept {
+			ch := bus.Channel(message.Channel)
+			go func() {
+				if err := execRemote(ch, message); err != nil {
+					log.Println("Error executing remote command:", err)
+				}
+			}()
+		}
 	}()
 
-	<-eSig
-	fmt.Println("Executor service shut down...")
 	<-rSig
-	fmt.Println("Routing service shut down...")
+	log.Println("Routing service shut down...")
+	<-eSig
+	log.Println("Executor service shut down...")
 
-	fmt.Print("Exiting...")
+	log.Print("Exiting...")
 }

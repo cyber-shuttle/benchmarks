@@ -7,11 +7,33 @@ protos: FORCE
 	--go-grpc_opt=paths=source_relative \
 	protos/*.proto
 
-build:
+build_router:
+	mkdir -p bin; \
+	cd grpcsh; \
+	go build -o ../bin/router router.go; \
+	cd ..
+
+build_agent:
 	mkdir -p bin; \
 	cd grpcsh; \
 	go build -o ../bin/agent agent.go; \
-	go build -o ../bin/server router.go; \
 	cd ..
+
+build_grpcsh:
+	mkdir -p bin; \
+	cd grpcsh; \
+	go build -o ../bin/grpcsh grpcsh.go; \
+	cd ..
+
+build: build_router build_agent build_grpcsh
+
+start_router:
+	./bin/router -r localhost:50051
+
+start_agent:
+	./bin/agent -r localhost:50051 -i abcde -s $(CURDIR)/agent.sock
+
+run_grpcsh:
+	./bin/grpcsh -i abcde -s $(CURDIR)/agent.sock -c "ls -l"
 
 FORCE:
