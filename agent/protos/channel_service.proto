@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package grpcsh;
+option go_package = "grpcsh/pb";
+
+import "google/protobuf/empty.proto";
+
+service ChannelService {
+  rpc CreateChannel(google.protobuf.Empty) returns (Channel);
+  rpc DeleteChannel(Channel) returns (google.protobuf.Empty);
+}
+
+message Channel { string id = 1; }

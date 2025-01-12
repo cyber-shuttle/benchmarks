@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package grpcsh;
+option go_package = "grpcsh/pb";
+
+import "messages.proto";
+
+service ExecutorService {
+  rpc Exec(stream Message) returns (stream Result);
+}

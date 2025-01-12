@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package grpcsh;
+option go_package = "grpcsh/pb";
+
+message Message {
+  string peer = 1;
+  oneof data {
+    string command = 2;
+    bytes stdin = 3;
+  }
+}
+
+message Result {
+  string peer = 1;
+  oneof data {
+    bytes stdout = 2;
+    bytes stderr = 3;
+  }
+}
+
+message PeerMessage {
+  string channel = 1;
+  string peer = 2;
+  oneof data {
+    string command = 3;
+    bytes stdin = 4;
+    bytes stdout = 5;
+    bytes stderr = 6;
+  }
+}

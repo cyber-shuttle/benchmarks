@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package grpcsh;
+option go_package = "grpcsh/pb";
+
+import "messages.proto";
+
+service RouterService {
+  rpc Connect(stream PeerMessage) returns (stream PeerMessage);
+}
