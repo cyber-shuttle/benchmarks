@@ -32,7 +32,9 @@ func (s *executorServer) Exec(stream pb.ExecutorService_ExecServer) error {
 	// command should always be command
 	peer := command.Peer
 	if peer == "local" {
-		go execLocal(stream, command)
+		if err := execLocal(stream, command); err != nil {
+			return fmt.Errorf("failed to execute local command: %w", err)
+		}
 	} else {
 		ctx := context.Background()
 		channel, err := channelSvcClient.CreateChannel(ctx, &emptypb.Empty{})
@@ -46,7 +48,9 @@ func (s *executorServer) Exec(stream pb.ExecutorService_ExecServer) error {
 			Peer:    command.Peer,
 			Data:    &pb.PeerMessage_Command{Command: command.GetCommand()},
 		}
-		go forwardRemote(stream, ch, command)
+		if err := forwardRemote(stream, ch, command); err != nil {
+			return fmt.Errorf("failed to forward remote command: %w", err)
+		}
 	}
 	return nil
 }
@@ -71,67 +75,95 @@ func execLocal(stream pb.ExecutorService_ExecServer, command *pb.Message) error 
 		return fmt.Errorf("failed to start command: %w", err)
 	}
 
-	handleStream := func(reader io.Reader, transform func([]byte) *pb.Result) {
+	done := make(chan bool, 3)
+
+	handleStream := func(reader io.Reader, transform func([]byte) *pb.Result) error {
 		buf := make([]byte, 1024)
 		for {
 			n, err := reader.Read(buf)
 			if err != nil {
-				if err == io.EOF {
-					return
+				if err != io.EOF {
+					return fmt.Errorf("Error reading stream: %w", err)
 				}
-				log.Println("Error reading stream:", err)
-				return
+				break
 			}
 			if err := stream.Send(transform(buf[:n])); err != nil {
-				log.Println("Error sending stream:", err)
-				return
+				return fmt.Errorf("Error sending stream: %w", err)
 			}
 		}
+		return nil
 	}
 
-	go handleStream(stdout, func(data []byte) *pb.Result {
-		return &pb.Result{Peer: peer, Data: &pb.Result_Stdout{Stdout: data}}
-	})
+	go func() {
+		if err := handleStream(stdout, func(data []byte) *pb.Result {
+			return &pb.Result{Peer: peer, Data: &pb.Result_Stdout{Stdout: data}}
+		}); err != nil {
+			log.Println("Error handling stdout stream:", err)
+		}
+		done <- true
+	}()
 
-	go handleStream(stderr, func(data []byte) *pb.Result {
-		return &pb.Result{Peer: peer, Data: &pb.Result_Stderr{Stderr: data}}
-	})
+	go func() {
+		if err := handleStream(stderr, func(data []byte) *pb.Result {
+			return &pb.Result{Peer: peer, Data: &pb.Result_Stderr{Stderr: data}}
+		}); err != nil {
+			log.Println("Error handling stderr stream:", err)
+		}
+		done <- true
+	}()
 
 	go func() {
 		for {
 			message, err := stream.Recv()
 			if err != nil {
-				if err == io.EOF {
-					return
+				if err != io.EOF {
+					log.Println("Error receiving stream:", err)
 				}
-				log.Println("Error receiving stream:", err)
-				return
+				break
 			}
 			chunk := message.Data.(*pb.Message_Stdin).Stdin
-			stdin.Write(chunk)
+			if n, err := stdin.Write(chunk); err != nil {
+				log.Println("Error writing to stdin:", err)
+				break
+			} else if n != len(chunk) {
+				log.Println("Failed to write all bytes to stdin")
+				break
+			}
 		}
+		log.Println("Done handling stdin stream")
+		done <- true
 	}()
+
+	// wait for all goroutines to finish
+	cmd.Wait()
+	for i := 0; i < 3; i++ {
+		<-done
+	}
+	log.Println("Exec command finished")
 	return nil
 }
 
-func forwardRemote(stream pb.ExecutorService_ExecServer, channel chan *pb.PeerMessage, command *pb.PeerMessage) {
+func forwardRemote(stream pb.ExecutorService_ExecServer, channel chan *pb.PeerMessage, command *pb.PeerMessage) error {
+	done := make(chan bool, 1)
 	channel <- command
+
 	go func() {
 		for {
 			message, err := stream.Recv()
 			if err != nil {
-				if err == io.EOF {
-					return
+				if err != io.EOF {
+					log.Println("Error receiving stream:", err)
 				}
-				log.Println("Error receiving stream:", err)
-				return
+				break
 			}
 			channel <- &pb.PeerMessage{
 				Peer:    command.Peer,
 				Channel: command.Channel,
 				Data:    &pb.PeerMessage_Stdin{Stdin: message.Data.(*pb.Message_Stdin).Stdin}}
 		}
+		done <- true
 	}()
+
 	for msg := range channel {
 		stdout := msg.Data.(*pb.PeerMessage_Stdout).Stdout
 		if stdout != nil {
@@ -140,7 +172,7 @@ func forwardRemote(stream pb.ExecutorService_ExecServer, channel chan *pb.PeerMe
 				Data: &pb.Result_Stdout{Stdout: stdout},
 			}); err != nil {
 				log.Println("Error sending stdout:", err)
-				return
+				return err
 			}
 		}
 		stderr := msg.Data.(*pb.PeerMessage_Stderr).Stderr
@@ -150,10 +182,13 @@ func forwardRemote(stream pb.ExecutorService_ExecServer, channel chan *pb.PeerMe
 				Data: &pb.Result_Stderr{Stderr: stderr},
 			}); err != nil {
 				log.Println("Error sending stderr:", err)
-				return
+				return err
 			}
 		}
 	}
+	<-done
+	log.Println("Exec command finished")
+	return nil
 }
 
 func execRemote(channel chan *pb.PeerMessage, command *pb.PeerMessage) error {
@@ -206,6 +241,8 @@ func execRemote(channel chan *pb.PeerMessage, command *pb.PeerMessage) error {
 			stdin.Write(chunk)
 		}
 	}()
+	cmd.Wait()
+	log.Println("Command finished")
 	return nil
 }
 

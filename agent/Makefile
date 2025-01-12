@@ -34,6 +34,9 @@ start_agent:
 	./bin/agent -r localhost:50051 -i abcde -s $(CURDIR)/agent.sock
 
 run_grpcsh:
-	./bin/grpcsh -i abcde -s $(CURDIR)/agent.sock -c "ls -l"
+	./bin/grpcsh -i local -s $(CURDIR)/agent.sock -c "ls -l"
+
+run_grpcsh_with_stdin:
+	echo "this is from stdin" | ./bin/grpcsh -i local -s $(CURDIR)/agent.sock -c "cat"
 
 FORCE:

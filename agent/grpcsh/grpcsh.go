@@ -37,7 +37,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to connect: %v", err)
 	}
-	log.Println("Connected to peer")
 	defer conn.Close()
 
 	client := pb.NewExecutorServiceClient(conn)
@@ -59,16 +58,27 @@ func main() {
 			log.Fatalf("Error sending command: %v", err)
 		}
 		// send stdin if present
+		stat, err := os.Stdin.Stat()
+		if err != nil {
+			errChan <- fmt.Errorf("error stating stdin: %v", err)
+			stream.CloseSend()
+			return
+		}
+		if (stat.Mode() & os.ModeCharDevice) != 0 {
+			errChan <- nil
+			stream.CloseSend()
+			return
+		}
 		buf := make([]byte, 1024)
 		for {
 			n, err := os.Stdin.Read(buf)
-			if err == io.EOF {
-				stream.CloseSend()
-				errChan <- nil
-				return
-			}
 			if err != nil {
-				errChan <- fmt.Errorf("error reading stdin: %v", err)
+				if err != io.EOF {
+					errChan <- fmt.Errorf("error reading stdin: %v", err)
+				} else {
+					errChan <- nil
+				}
+				stream.CloseSend()
 				return
 			}
 			if err := stream.Send(&pb.Message{Peer: *peerId, Data: &pb.Message_Stdin{Stdin: buf[:n]}}); err != nil {
