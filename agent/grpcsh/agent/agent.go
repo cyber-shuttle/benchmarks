@@ -42,13 +42,13 @@ func (s *executorServer) Exec(stream pb.ExecutorService_ExecServer) error {
 			return fmt.Errorf("failed to create channel: %w", err)
 		}
 		log.Println("Got channel:", channel.Id)
-		ch := bus.Channel(channel.Id)
+		ci, co := bus.Channel(channel.Id)
 		command := &pb.PeerMessage{
 			Channel: channel.Id,
 			Peer:    command.Peer,
 			Data:    &pb.PeerMessage_Command{Command: command.GetCommand()},
 		}
-		if err := forwardRemote(stream, ch, command); err != nil {
+		if err := forwardRemote(stream, ci, co, command); err != nil {
 			return fmt.Errorf("failed to forward remote command: %w", err)
 		}
 	}
@@ -143,9 +143,9 @@ func execLocal(stream pb.ExecutorService_ExecServer, command *pb.Message) error 
 	return nil
 }
 
-func forwardRemote(stream pb.ExecutorService_ExecServer, channel chan *pb.PeerMessage, command *pb.PeerMessage) error {
+func forwardRemote(stream pb.ExecutorService_ExecServer, in chan *pb.PeerMessage, out chan *pb.PeerMessage, command *pb.PeerMessage) error {
 	done := make(chan bool, 1)
-	channel <- command
+	out <- command
 
 	go func() {
 		for {
@@ -156,7 +156,7 @@ func forwardRemote(stream pb.ExecutorService_ExecServer, channel chan *pb.PeerMe
 				}
 				break
 			}
-			channel <- &pb.PeerMessage{
+			out <- &pb.PeerMessage{
 				Peer:    command.Peer,
 				Channel: command.Channel,
 				Data:    &pb.PeerMessage_Stdin{Stdin: message.Data.(*pb.Message_Stdin).Stdin}}
@@ -164,7 +164,7 @@ func forwardRemote(stream pb.ExecutorService_ExecServer, channel chan *pb.PeerMe
 		done <- true
 	}()
 
-	for msg := range channel {
+	for msg := range in {
 		stdout := msg.Data.(*pb.PeerMessage_Stdout).Stdout
 		if stdout != nil {
 			if err := stream.Send(&pb.Result{
@@ -191,7 +191,7 @@ func forwardRemote(stream pb.ExecutorService_ExecServer, channel chan *pb.PeerMe
 	return nil
 }
 
-func execRemote(channel chan *pb.PeerMessage, command *pb.PeerMessage) error {
+func execRemote(in chan *pb.PeerMessage, out chan *pb.PeerMessage, command *pb.PeerMessage) error {
 	// create a subprocess for a locally-initiated command
 	script := command.Data.(*pb.PeerMessage_Command).Command
 	cmd := exec.Command("bash", "-c", script)
@@ -223,7 +223,7 @@ func execRemote(channel chan *pb.PeerMessage, command *pb.PeerMessage) error {
 				log.Println("Error reading stream:", err)
 				return
 			}
-			channel <- transform(command.Channel, command.Peer, buf[:n])
+			out <- transform(command.Channel, command.Peer, buf[:n])
 		}
 	}
 
@@ -236,7 +236,7 @@ func execRemote(channel chan *pb.PeerMessage, command *pb.PeerMessage) error {
 	})
 
 	go func() {
-		for message := range channel {
+		for message := range in {
 			chunk := message.Data.(*pb.PeerMessage_Stdin).Stdin
 			stdin.Write(chunk)
 		}
@@ -309,9 +309,9 @@ func Start(peerID string, routerUrl string, socketPath string) {
 		intercept := bus.Intercept()
 
 		for message := range intercept {
-			ch := bus.Channel(message.Channel)
+			ci, co := bus.Channel(message.Channel)
 			go func() {
-				if err := execRemote(ch, message); err != nil {
+				if err := execRemote(ci, co, message); err != nil {
 					log.Println("Error executing remote command:", err)
 				}
 			}()
