@@ -144,10 +144,11 @@ func execLocal(stream pb.ExecutorService_ExecServer, command *pb.Message) error 
 }
 
 func forwardRemote(stream pb.ExecutorService_ExecServer, in chan *pb.PeerMessage, out chan *pb.PeerMessage, command *pb.PeerMessage) error {
+	fmt.Println("Forwarding remote command", command)
 	done := make(chan bool, 1)
-	out <- command
 
 	go func() {
+		out <- command
 		for {
 			message, err := stream.Recv()
 			if err != nil {
@@ -165,21 +166,20 @@ func forwardRemote(stream pb.ExecutorService_ExecServer, in chan *pb.PeerMessage
 	}()
 
 	for msg := range in {
-		stdout := msg.Data.(*pb.PeerMessage_Stdout).Stdout
-		if stdout != nil {
+
+		if data, ok := msg.Data.(*pb.PeerMessage_Stdout); ok {
 			if err := stream.Send(&pb.Result{
 				Peer: msg.Peer,
-				Data: &pb.Result_Stdout{Stdout: stdout},
+				Data: &pb.Result_Stdout{Stdout: data.Stdout},
 			}); err != nil {
 				log.Println("Error sending stdout:", err)
 				return err
 			}
 		}
-		stderr := msg.Data.(*pb.PeerMessage_Stderr).Stderr
-		if stderr != nil {
+		if data, ok := msg.Data.(*pb.PeerMessage_Stderr); ok {
 			if err := stream.Send(&pb.Result{
 				Peer: msg.Peer,
-				Data: &pb.Result_Stderr{Stderr: stderr},
+				Data: &pb.Result_Stderr{Stderr: data.Stderr},
 			}); err != nil {
 				log.Println("Error sending stderr:", err)
 				return err
@@ -217,11 +217,10 @@ func execRemote(in chan *pb.PeerMessage, out chan *pb.PeerMessage, command *pb.P
 		for {
 			n, err := reader.Read(buf)
 			if err != nil {
-				if err == io.EOF {
-					break
+				if err != io.EOF {
+					log.Println("Error reading stream:", err)
 				}
-				log.Println("Error reading stream:", err)
-				return
+				break
 			}
 			out <- transform(command.Channel, command.Peer, buf[:n])
 		}
@@ -309,6 +308,7 @@ func Start(peerID string, routerUrl string, socketPath string) {
 		intercept := bus.Intercept()
 
 		for message := range intercept {
+			fmt.Println("Intercepted message", message)
 			ci, co := bus.Channel(message.Channel)
 			go func() {
 				if err := execRemote(ci, co, message); err != nil {

@@ -43,6 +43,7 @@ func (s *RouterService) Connect(stream pb.RouterService_ConnectServer) error {
 
 	for {
 		msg, err := stream.Recv()
+		fmt.Println("<<", msg)
 		if err != nil {
 			return nil
 		}
@@ -51,6 +52,7 @@ func (s *RouterService) Connect(stream pb.RouterService_ConnectServer) error {
 			s.mu.RLock() // Read lock when accessing map for routing
 			if peer := s.peers[msg.Peer]; peer != nil {
 				peer.Send(msg)
+				fmt.Println(">>", msg)
 			}
 			s.mu.RUnlock()
 		}
