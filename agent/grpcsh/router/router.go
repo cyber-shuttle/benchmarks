@@ -25,7 +25,7 @@ func (s *RouterService) Connect(stream pb.RouterService_ConnectServer) error {
 	if err != nil {
 		return fmt.Errorf("failed to receive peer ID: %w", err)
 	}
-	peerId := peer.Peer
+	peerId := peer.From
 	log.Println("Received peer ID:", peerId)
 
 	// Assign peer ID
@@ -43,18 +43,22 @@ func (s *RouterService) Connect(stream pb.RouterService_ConnectServer) error {
 
 	for {
 		msg, err := stream.Recv()
-		fmt.Println("<<", msg)
 		if err != nil {
-			return nil
+			return fmt.Errorf("failed to receive message: %w", err)
 		}
-
-		if msg.Peer != "" {
-			s.mu.RLock() // Read lock when accessing map for routing
-			if peer := s.peers[msg.Peer]; peer != nil {
-				peer.Send(msg)
-				fmt.Println(">>", msg)
+		from := msg.From
+		to := msg.To
+		if to != "" {
+			s.mu.RLock()
+			if peer, exists := s.peers[msg.To]; exists {
+				fmt.Printf("[Router] %s -> %s: %s\n", from, to, msg)
+				if err := peer.Send(msg); err != nil {
+					fmt.Println("[Router] Failed to send message:", err)
+				}
 			}
 			s.mu.RUnlock()
+		} else {
+			fmt.Println("[Router] No recipient for message:", msg)
 		}
 	}
 }

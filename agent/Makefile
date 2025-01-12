@@ -30,13 +30,14 @@ build: build_router build_agent build_grpcsh
 start_router:
 	./bin/router -r localhost:50051
 
-start_agent:
-	./bin/agent -r localhost:50051 -i abcde -s $(CURDIR)/agent.sock
+start_agents:
+	./bin/agent -r localhost:50051 -i A -s $(CURDIR)/agent_A.sock & \
+	./bin/agent -r localhost:50051 -i B -s $(CURDIR)/agent_B.sock
 
 run_grpcsh:
-	./bin/grpcsh -i abcde -s $(CURDIR)/agent.sock -c "ls -l"
+	./bin/grpcsh -i B -s $(CURDIR)/agent_A.sock -c "ls -l"
 
 run_grpcsh_with_stdin:
-	echo "this is from stdin" | ./bin/grpcsh -i abcde -s $(CURDIR)/agent.sock -c "cat"
+	echo "this is from stdin" | ./bin/grpcsh -i B -s $(CURDIR)/agent_A.sock -c "cat"
 
 FORCE:

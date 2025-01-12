@@ -22,6 +22,7 @@ type executorServer struct {
 // global variables
 var bus *Bus
 var channelSvcClient pb.ChannelServiceClient
+var selfPeerId string
 
 func (s *executorServer) Exec(stream pb.ExecutorService_ExecServer) error {
 	log.Println("Received Exec command")
@@ -30,8 +31,8 @@ func (s *executorServer) Exec(stream pb.ExecutorService_ExecServer) error {
 		return fmt.Errorf("failed to receive command: %w", err)
 	}
 	// command should always be command
-	peer := command.Peer
-	if peer == "local" {
+	to := command.To
+	if to == selfPeerId {
 		if err := execLocal(stream, command); err != nil {
 			return fmt.Errorf("failed to execute local command: %w", err)
 		}
@@ -45,7 +46,8 @@ func (s *executorServer) Exec(stream pb.ExecutorService_ExecServer) error {
 		ci, co := bus.Channel(channel.Id)
 		command := &pb.PeerMessage{
 			Channel: channel.Id,
-			Peer:    command.Peer,
+			From:    selfPeerId,
+			To:      to,
 			Data:    &pb.PeerMessage_Command{Command: command.GetCommand()},
 		}
 		if err := forwardRemote(stream, ci, co, command); err != nil {
@@ -57,7 +59,6 @@ func (s *executorServer) Exec(stream pb.ExecutorService_ExecServer) error {
 
 func execLocal(stream pb.ExecutorService_ExecServer, command *pb.Message) error {
 	script := command.Data.(*pb.Message_Command).Command
-	peer := command.Peer
 	cmd := exec.Command("bash", "-c", script)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -96,7 +97,7 @@ func execLocal(stream pb.ExecutorService_ExecServer, command *pb.Message) error 
 
 	go func() {
 		if err := handleStream(stdout, func(data []byte) *pb.Result {
-			return &pb.Result{Peer: peer, Data: &pb.Result_Stdout{Stdout: data}}
+			return &pb.Result{From: selfPeerId, To: selfPeerId, Data: &pb.Result_Stdout{Stdout: data}}
 		}); err != nil {
 			log.Println("Error handling stdout stream:", err)
 		}
@@ -105,7 +106,7 @@ func execLocal(stream pb.ExecutorService_ExecServer, command *pb.Message) error 
 
 	go func() {
 		if err := handleStream(stderr, func(data []byte) *pb.Result {
-			return &pb.Result{Peer: peer, Data: &pb.Result_Stderr{Stderr: data}}
+			return &pb.Result{From: selfPeerId, To: selfPeerId, Data: &pb.Result_Stderr{Stderr: data}}
 		}); err != nil {
 			log.Println("Error handling stderr stream:", err)
 		}
@@ -158,7 +159,8 @@ func forwardRemote(stream pb.ExecutorService_ExecServer, in chan *pb.PeerMessage
 				break
 			}
 			out <- &pb.PeerMessage{
-				Peer:    command.Peer,
+				From:    selfPeerId,
+				To:      command.To,
 				Channel: command.Channel,
 				Data:    &pb.PeerMessage_Stdin{Stdin: message.Data.(*pb.Message_Stdin).Stdin}}
 		}
@@ -169,7 +171,8 @@ func forwardRemote(stream pb.ExecutorService_ExecServer, in chan *pb.PeerMessage
 
 		if data, ok := msg.Data.(*pb.PeerMessage_Stdout); ok {
 			if err := stream.Send(&pb.Result{
-				Peer: msg.Peer,
+				From: selfPeerId,
+				To:   msg.To,
 				Data: &pb.Result_Stdout{Stdout: data.Stdout},
 			}); err != nil {
 				log.Println("Error sending stdout:", err)
@@ -178,7 +181,8 @@ func forwardRemote(stream pb.ExecutorService_ExecServer, in chan *pb.PeerMessage
 		}
 		if data, ok := msg.Data.(*pb.PeerMessage_Stderr); ok {
 			if err := stream.Send(&pb.Result{
-				Peer: msg.Peer,
+				From: selfPeerId,
+				To:   msg.To,
 				Data: &pb.Result_Stderr{Stderr: data.Stderr},
 			}); err != nil {
 				log.Println("Error sending stderr:", err)
@@ -194,6 +198,7 @@ func forwardRemote(stream pb.ExecutorService_ExecServer, in chan *pb.PeerMessage
 func execRemote(in chan *pb.PeerMessage, out chan *pb.PeerMessage, command *pb.PeerMessage) error {
 	// create a subprocess for a locally-initiated command
 	script := command.Data.(*pb.PeerMessage_Command).Command
+	to := command.From
 	cmd := exec.Command("bash", "-c", script)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -222,16 +227,16 @@ func execRemote(in chan *pb.PeerMessage, out chan *pb.PeerMessage, command *pb.P
 				}
 				break
 			}
-			out <- transform(command.Channel, command.Peer, buf[:n])
+			out <- transform(command.Channel, to, buf[:n])
 		}
 	}
 
 	go handleStream(stdout, func(id string, peer string, data []byte) *pb.PeerMessage {
-		return &pb.PeerMessage{Channel: id, Peer: peer, Data: &pb.PeerMessage_Stdout{Stdout: data}}
+		return &pb.PeerMessage{Channel: id, From: selfPeerId, To: peer, Data: &pb.PeerMessage_Stdout{Stdout: data}}
 	})
 
 	go handleStream(stderr, func(id string, peer string, data []byte) *pb.PeerMessage {
-		return &pb.PeerMessage{Channel: id, Peer: peer, Data: &pb.PeerMessage_Stderr{Stderr: data}}
+		return &pb.PeerMessage{Channel: id, From: selfPeerId, To: peer, Data: &pb.PeerMessage_Stderr{Stderr: data}}
 	})
 
 	go func() {
@@ -249,6 +254,7 @@ func Start(peerID string, routerUrl string, socketPath string) {
 
 	eSig := make(chan struct{})
 	rSig := make(chan struct{})
+	selfPeerId = peerID
 
 	// server to process executor requests
 	go func() {
@@ -296,7 +302,7 @@ func Start(peerID string, routerUrl string, socketPath string) {
 		defer stream.CloseSend()
 
 		func() {
-			err := stream.Send(&pb.PeerMessage{Peer: peerID})
+			err := stream.Send(&pb.PeerMessage{From: selfPeerId})
 			if err != nil {
 				log.Println("Error sending peer ID:", err)
 				return

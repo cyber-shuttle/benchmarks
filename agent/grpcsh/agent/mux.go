@@ -24,7 +24,7 @@ func CreateBus(stream pb.RouterService_ConnectClient) *Bus {
 	go func() {
 		for {
 			peerMessage, err := b.stream.Recv()
-			fmt.Println("<<", peerMessage)
+			fmt.Println("[MUX] Send:", peerMessage)
 			if err != nil {
 				return
 			}
@@ -61,7 +61,7 @@ func (b *Bus) Channel(id string) (chan *pb.PeerMessage, chan *pb.PeerMessage) {
 
 	go func() {
 		for message := range co {
-			fmt.Println(">>", message)
+			fmt.Println("[MUX] Recv:", message)
 			if err := b.stream.Send(message); err != nil {
 				log.Println("Error sending message:", err)
 				return

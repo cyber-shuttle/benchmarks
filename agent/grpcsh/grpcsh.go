@@ -54,7 +54,7 @@ func main() {
 	// outbound stream
 	go func() {
 		// send the command
-		if err := stream.Send(&pb.Message{Peer: *peerId, Data: &pb.Message_Command{Command: *command}}); err != nil {
+		if err := stream.Send(&pb.Message{To: *peerId, Data: &pb.Message_Command{Command: *command}}); err != nil {
 			log.Fatalf("Error sending command: %v", err)
 		}
 		// send stdin if present
@@ -81,7 +81,7 @@ func main() {
 				stream.CloseSend()
 				return
 			}
-			if err := stream.Send(&pb.Message{Peer: *peerId, Data: &pb.Message_Stdin{Stdin: buf[:n]}}); err != nil {
+			if err := stream.Send(&pb.Message{To: *peerId, Data: &pb.Message_Stdin{Stdin: buf[:n]}}); err != nil {
 				errChan <- fmt.Errorf("error sending stdin to stream: %v", err)
 				return
 			}

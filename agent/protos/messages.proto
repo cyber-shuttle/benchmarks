@@ -4,28 +4,31 @@ package grpcsh;
 option go_package = "grpcsh/pb";
 
 message Message {
-  string peer = 1;
+  string from = 1;
+  string to = 2;
   oneof data {
-    string command = 2;
-    bytes stdin = 3;
+    string command = 3;
+    bytes stdin = 4;
   }
 }
 
 message Result {
-  string peer = 1;
+  string from = 1;
+  string to = 2;
   oneof data {
-    bytes stdout = 2;
-    bytes stderr = 3;
+    bytes stdout = 3;
+    bytes stderr = 4;
   }
 }
 
 message PeerMessage {
   string channel = 1;
-  string peer = 2;
+  string from = 2;
+  string to = 3;
   oneof data {
-    string command = 3;
-    bytes stdin = 4;
-    bytes stdout = 5;
-    bytes stderr = 6;
+    string command = 4;
+    bytes stdin = 5;
+    bytes stdout = 6;
+    bytes stderr = 7;
   }
 }
