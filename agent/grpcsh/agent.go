@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	agent "grpcsh/agent"
 	"log"
 	"os"
@@ -31,8 +30,8 @@ func main() {
 	}
 
 	// logic
-	fmt.Println("Peer ID:", *peerID)
-	fmt.Println("Router URL:", *routerUrl)
-	fmt.Println("Socket Path:", *socketPath)
+	log.Println("Peer ID:", *peerID)
+	log.Println("Router URL:", *routerUrl)
+	log.Println("Socket Path:", *socketPath)
 	agent.Start(*peerID, *routerUrl, *socketPath)
 }

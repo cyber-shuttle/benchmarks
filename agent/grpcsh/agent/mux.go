@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"fmt"
 	pb "grpcsh/pb"
 	"log"
 )
@@ -24,7 +23,7 @@ func CreateBus(stream pb.RouterService_ConnectClient) *Bus {
 	go func() {
 		for {
 			peerMessage, err := b.stream.Recv()
-			fmt.Println("[MUX] Send:", peerMessage)
+			log.Printf("[%s] mux received: %s\n", selfPeerId, peerMessage)
 			if err != nil {
 				return
 			}
@@ -38,22 +37,22 @@ func CreateBus(stream pb.RouterService_ConnectClient) *Bus {
 			}
 		}
 	}()
-	log.Println("Bus created")
+	log.Printf("[%s] mux created bus\n", selfPeerId)
 	return b
 }
 
 func (b *Bus) Channel(id string) (chan *pb.PeerMessage, chan *pb.PeerMessage) {
-	fmt.Println("[Mux] initializing bi-channels", id)
+	log.Printf("[%s] mux received bi-channel request: %s\n", selfPeerId, id)
 
 	ci := b.channels_i[id]
 	co := b.channels_o[id]
 
 	if ci != nil && co != nil {
-		fmt.Println("[Mux] Found bi-channels, returning existing", id)
+		log.Printf("[%s] mux returning existing bi-channels: %s\n", selfPeerId, id)
 		return ci, co
 	}
 
-	fmt.Println("[Mux] Creating missing channels", id)
+	log.Printf("[%s] mux returning new bi-channels: %s\n", selfPeerId, id)
 	ci = make(chan *pb.PeerMessage)
 	co = make(chan *pb.PeerMessage)
 	b.channels_i[id] = ci
@@ -61,9 +60,9 @@ func (b *Bus) Channel(id string) (chan *pb.PeerMessage, chan *pb.PeerMessage) {
 
 	go func() {
 		for message := range co {
-			fmt.Println("[MUX] Recv:", message)
+			log.Printf("[%s] mux sending: %s\n", selfPeerId, message)
 			if err := b.stream.Send(message); err != nil {
-				log.Println("Error sending message:", err)
+				log.Printf("[%s] mux got error when sending: %s\n", selfPeerId, err)
 				return
 			}
 		}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	router "grpcsh/router"
 	"log"
 )
@@ -19,6 +18,6 @@ func main() {
 	}
 
 	// logic
-	fmt.Println("Router URL:", *routerUrl)
+	log.Println("Router URL:", *routerUrl)
 	router.Start(*routerUrl)
 }
