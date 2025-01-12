@@ -1,9 +1,9 @@
 package main
 
 import (
-	agent "grpcsh/agent"
+	router "grpcsh/router"
 )
 
 func main() {
-	agent.Start()
+	router.Start()
 }

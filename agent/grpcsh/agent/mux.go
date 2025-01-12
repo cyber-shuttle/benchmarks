@@ -1,8 +1,6 @@
-package grpcsh
+package agent
 
-import (
-	pb "grpcsh/pb"
-)
+import pb "grpcsh/pb"
 
 // Router handles message routing between virtual channels
 type Router struct {
