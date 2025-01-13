@@ -48,8 +48,10 @@ func (s *executorServer) Exec(stream pb.ExecutorService_ExecServer) error {
 		log.Printf("[%s] got channel: %s\n", selfPeerId, channel.Id)
 		ci, co := bus.Channel(channel.Id)
 		command := &pb.PeerMessage{Channel: channel.Id, From: selfPeerId, To: to, Flag: command.Flag, Data: command.Data}
-		if err := forwardRemote(stream, ci, co, command); err != nil {
-			return fmt.Errorf("failed to forward remote command: %w", err)
+		err = execLocalOnRemote(stream, ci, co, command)
+		bus.Close(channel.Id)
+		if err != nil {
+			return fmt.Errorf("failed to forward remote command: %w\n", err)
 		}
 	}
 	return nil
@@ -164,9 +166,9 @@ func execLocal(stream pb.ExecutorService_ExecServer, command *pb.Message) error 
 	return nil
 }
 
-func forwardRemote(stream pb.ExecutorService_ExecServer, in chan *pb.PeerMessage, out chan *pb.PeerMessage, command *pb.PeerMessage) error {
+func execLocalOnRemote(stream pb.ExecutorService_ExecServer, in chan *pb.PeerMessage, out chan *pb.PeerMessage, command *pb.PeerMessage) error {
 	log.Printf("[%s] forwarding remote command: %s\n", selfPeerId, command)
-	done := make(chan bool, 1)
+	done := make(chan any)
 
 	go func() {
 		out <- command
@@ -187,22 +189,32 @@ func forwardRemote(stream pb.ExecutorService_ExecServer, in chan *pb.PeerMessage
 		done <- true
 	}()
 
-	for msg := range in {
-		if msg.Flag == pb.Flag_MSG_STDOUT || msg.Flag == pb.Flag_MSG_STDERR || msg.Flag == pb.Flag_EOF_STDOUT || msg.Flag == pb.Flag_EOF_STDERR {
-			if err := stream.Send(&pb.Result{From: selfPeerId, To: msg.To, Flag: msg.Flag, Data: msg.Data}); err != nil {
-				log.Printf("[%s] error sending msg: %s\n", selfPeerId, err)
-				return err
+	go func() {
+		for msg := range in {
+			if msg.Flag == pb.Flag_MSG_STDOUT || msg.Flag == pb.Flag_MSG_STDERR || msg.Flag == pb.Flag_EOF_STDOUT || msg.Flag == pb.Flag_EOF_STDERR {
+				if err := stream.Send(&pb.Result{From: selfPeerId, To: msg.To, Flag: msg.Flag, Data: msg.Data}); err != nil {
+					log.Printf("[%s] error sending msg: %s\n", selfPeerId, err)
+					break
+				}
+			} else {
+				log.Printf("[%s] unexpected message: %s\n", selfPeerId, msg)
+				break
 			}
-		} else {
-			return fmt.Errorf("[%s] unexpected message: %s\n", selfPeerId, msg)
 		}
+		done <- true
+	}()
+
+	for i := 0; i < 2; i++ {
+		<-done
 	}
-	<-done
 	log.Printf("[%s] Exec command finished\n", selfPeerId)
 	return nil
 }
 
-func execRemote(in chan *pb.PeerMessage, out chan *pb.PeerMessage, command *pb.PeerMessage) error {
+func execRemoteOnLocal(in chan *pb.PeerMessage, out chan *pb.PeerMessage, command *pb.PeerMessage) error {
+
+	done := make(chan any)
+
 	// create a subprocess for a locally-initiated command
 	if command.Flag != pb.Flag_COMMAND {
 		return fmt.Errorf("expected command, got: %s", command.Flag.String())
@@ -241,6 +253,7 @@ func execRemote(in chan *pb.PeerMessage, out chan *pb.PeerMessage, command *pb.P
 			out <- transform(command.Channel, to, buf[:n], false)
 		}
 		out <- transform(command.Channel, to, nil, true)
+		done <- true
 	}
 
 	go handleStream(stdout, func(id string, peer string, data []byte, eof bool) *pb.PeerMessage {
@@ -272,9 +285,14 @@ func execRemote(in chan *pb.PeerMessage, out chan *pb.PeerMessage, command *pb.P
 		}
 		log.Printf("[%s] done handling stdin stream\n", selfPeerId)
 		stdin.Close()
+		done <- true
 	}()
 
 	cmd.Wait()
+	for i := 0; i < 3; i++ {
+		<-done
+	}
+
 	log.Printf("[%s] execRemote finished\n", selfPeerId)
 	return nil
 }
@@ -344,9 +362,11 @@ func Start(peerID string, routerUrl string, socketPath string) {
 
 		for message := range intercept {
 			log.Printf("[%s] received remote command: %s\n", selfPeerId, message)
-			ci, co := bus.Channel(message.Channel)
 			go func() {
-				if err := execRemote(ci, co, message); err != nil {
+				ci, co := bus.Channel(message.Channel)
+				err := execRemoteOnLocal(ci, co, message)
+				bus.Close(message.Channel)
+				if err != nil {
 					log.Printf("[%s] error executing remote command: %s\n", selfPeerId, err)
 				}
 			}()

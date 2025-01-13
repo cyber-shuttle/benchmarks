@@ -3,6 +3,7 @@ package agent
 import (
 	pb "grpcsh/pb"
 	"log"
+	"sync"
 )
 
 type Bus struct {
@@ -10,6 +11,7 @@ type Bus struct {
 	channels_o map[string]chan *pb.PeerMessage
 	stream     pb.RouterService_ConnectClient
 	intercept  chan *pb.PeerMessage
+	mu         sync.RWMutex
 }
 
 func CreateBus(stream pb.RouterService_ConnectClient) *Bus {
@@ -31,9 +33,14 @@ func CreateBus(stream pb.RouterService_ConnectClient) *Bus {
 				b.intercept <- peerMessage
 			} else {
 				c := peerMessage.Channel
-				if ch, exists := b.channels_i[c]; exists {
-					ch <- peerMessage
+				b.mu.Lock()
+				ch, exists := b.channels_i[c]
+				if !exists {
+					ch = make(chan *pb.PeerMessage)
+					b.channels_i[c] = ch
 				}
+				b.mu.Unlock()
+				ch <- peerMessage
 			}
 		}
 	}()
@@ -44,31 +51,33 @@ func CreateBus(stream pb.RouterService_ConnectClient) *Bus {
 func (b *Bus) Channel(id string) (chan *pb.PeerMessage, chan *pb.PeerMessage) {
 	log.Printf("[%s] mux received bi-channel request: %s\n", selfPeerId, id)
 
-	ci := b.channels_i[id]
-	co := b.channels_o[id]
+	begin_channel_loop := false
 
-	if ci != nil && co != nil {
-		log.Printf("[%s] mux returning existing bi-channels: %s\n", selfPeerId, id)
-		return ci, co
+	b.mu.Lock()
+
+	if b.channels_i[id] == nil {
+		b.channels_i[id] = make(chan *pb.PeerMessage)
 	}
 
-	log.Printf("[%s] mux returning new bi-channels: %s\n", selfPeerId, id)
-	ci = make(chan *pb.PeerMessage)
-	co = make(chan *pb.PeerMessage)
-	b.channels_i[id] = ci
-	b.channels_o[id] = co
+	if b.channels_o[id] == nil {
+		b.channels_o[id] = make(chan *pb.PeerMessage)
+		begin_channel_loop = true
+	}
 
-	go func() {
-		for message := range co {
-			log.Printf("[%s] mux sending: %s\n", selfPeerId, message)
-			if err := b.stream.Send(message); err != nil {
-				log.Printf("[%s] mux got error when sending: %s\n", selfPeerId, err)
-				return
+	b.mu.Unlock()
+
+	if begin_channel_loop {
+		go func() {
+			for message := range b.channels_o[id] {
+				log.Printf("[%s] mux sending: %s\n", selfPeerId, message)
+				if err := b.stream.Send(message); err != nil {
+					log.Printf("[%s] mux got error when sending: %s\n", selfPeerId, err)
+					return
+				}
 			}
-		}
-	}()
-
-	return ci, co
+		}()
+	}
+	return b.channels_i[id], b.channels_o[id]
 }
 
 func (b *Bus) Intercept() chan *pb.PeerMessage {
@@ -76,8 +85,12 @@ func (b *Bus) Intercept() chan *pb.PeerMessage {
 }
 
 func (b *Bus) Close(id string) {
-	if ch := b.channels_o[id]; ch != nil {
+	if ch, exists := b.channels_o[id]; exists {
 		close(ch)
 		delete(b.channels_o, id)
+	}
+	if ch, exists := b.channels_i[id]; exists {
+		close(ch)
+		delete(b.channels_i, id)
 	}
 }
