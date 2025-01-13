@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"crypto/md5"
 	pb "grpcsh/pb"
 	"log"
 	"sync"
@@ -24,15 +25,15 @@ func CreateBus(stream pb.RouterService_ConnectClient) *Bus {
 
 	go func() {
 		for {
-			peerMessage, err := b.stream.Recv()
-			log.Printf("[%s] mux received: %s\n", selfPeerId, peerMessage)
+			msg, err := b.stream.Recv()
+			log.Printf("[%s] mux received: %s<-%s, channel=%s, flag=%s, hash=%x, length=%d\n", selfId, msg.To, msg.From, msg.Channel, msg.Flag.String(), md5.Sum(msg.Data), len(msg.Data))
 			if err != nil {
 				return
 			}
-			if peerMessage.Flag == pb.Flag_COMMAND {
-				b.intercept <- peerMessage
+			if msg.Flag == pb.Flag_COMMAND {
+				b.intercept <- msg
 			} else {
-				c := peerMessage.Channel
+				c := msg.Channel
 				b.mu.Lock()
 				ch, exists := b.channels_i[c]
 				if !exists {
@@ -40,16 +41,16 @@ func CreateBus(stream pb.RouterService_ConnectClient) *Bus {
 					b.channels_i[c] = ch
 				}
 				b.mu.Unlock()
-				ch <- peerMessage
+				ch <- msg
 			}
 		}
 	}()
-	log.Printf("[%s] mux created bus\n", selfPeerId)
+	log.Printf("[%s] mux created bus\n", selfId)
 	return b
 }
 
 func (b *Bus) Channel(id string) (chan *pb.PeerMessage, chan *pb.PeerMessage) {
-	log.Printf("[%s] mux received bi-channel request: %s\n", selfPeerId, id)
+	log.Printf("[%s] mux received bi-channel request: %s\n", selfId, id)
 
 	begin_channel_loop := false
 
@@ -68,10 +69,11 @@ func (b *Bus) Channel(id string) (chan *pb.PeerMessage, chan *pb.PeerMessage) {
 
 	if begin_channel_loop {
 		go func() {
-			for message := range b.channels_o[id] {
-				log.Printf("[%s] mux sending: %s\n", selfPeerId, message)
-				if err := b.stream.Send(message); err != nil {
-					log.Printf("[%s] mux got error when sending: %s\n", selfPeerId, err)
+			ch := b.channels_o[id]
+			for msg := range ch {
+				log.Printf("[%s] mux sending: %s->%s, channel=%s, flag=%s, hash=%x, length=%d\n", selfId, msg.From, msg.To, msg.Channel, msg.Flag.String(), md5.Sum(msg.Data), len(msg.Data))
+				if err := b.stream.Send(msg); err != nil {
+					log.Printf("[%s] mux got error when sending: %s\n", selfId, err)
 					return
 				}
 			}

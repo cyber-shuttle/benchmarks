@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"crypto/md5"
 	"fmt"
 	pb "grpcsh/pb"
 	"log"
@@ -51,7 +52,7 @@ func (s *RouterService) Connect(stream pb.RouterService_ConnectServer) error {
 		if to != "" {
 			s.mu.RLock()
 			if peer, exists := s.peers[msg.To]; exists {
-				log.Printf("[Router] %s -> %s: %s\n", from, to, msg)
+				log.Printf("[Router] %s -> %s: channel=%s, flag=%s, hash=%x, length=%d\n", from, to, msg.Channel, msg.Flag, md5.Sum(msg.Data), len(msg.Data))
 				if err := peer.Send(msg); err != nil {
 					log.Printf("[Router] failed to send message: %s\n", err)
 				}

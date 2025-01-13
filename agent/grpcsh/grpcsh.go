@@ -47,6 +47,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error creating stream: %v", err)
 	}
+	defer stream.CloseSend()
 
 	// Create error channel for goroutines
 	errChan := make(chan error, 2)
