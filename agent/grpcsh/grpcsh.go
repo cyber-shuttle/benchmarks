@@ -54,19 +54,18 @@ func main() {
 	// outbound stream
 	go func() {
 		// send the command
-		if err := stream.Send(&pb.Message{To: *peerId, Data: &pb.Message_Command{Command: *command}}); err != nil {
-			log.Fatalf("Error sending command: %v", err)
+		if err := stream.Send(&pb.Message{To: *peerId, Flag: pb.Flag_COMMAND, Data: []byte(*command)}); err != nil {
+			errChan <- fmt.Errorf("Error sending command: %v", err)
+			return
 		}
 		// send stdin if present
 		stat, err := os.Stdin.Stat()
 		if err != nil {
 			errChan <- fmt.Errorf("error stating stdin: %v", err)
-			stream.CloseSend()
 			return
 		}
 		if (stat.Mode() & os.ModeCharDevice) != 0 {
 			errChan <- nil
-			stream.CloseSend()
 			return
 		}
 		buf := make([]byte, 1024)
@@ -78,41 +77,51 @@ func main() {
 				} else {
 					errChan <- nil
 				}
-				stream.CloseSend()
-				return
+				break
 			}
-			if err := stream.Send(&pb.Message{To: *peerId, Data: &pb.Message_Stdin{Stdin: buf[:n]}}); err != nil {
+			if err := stream.Send(&pb.Message{To: *peerId, Flag: pb.Flag_MSG_STDIN, Data: buf[:n]}); err != nil {
 				errChan <- fmt.Errorf("error sending stdin to stream: %v", err)
-				return
+				break
 			}
 		}
+		if err := stream.Send(&pb.Message{To: *peerId, Flag: pb.Flag_EOF_STDIN}); err != nil {
+			log.Printf("error sending EOF stdin to stream: %v", err)
+		}
+		os.Stdin.Close()
 	}()
 
 	// inbound stream
 	go func() {
+		eof_stdout := false
+		eof_stderr := false
 		for {
-			result, err := stream.Recv()
-			if err == io.EOF {
+			if eof_stdout && eof_stderr {
 				errChan <- nil
 				return
 			}
+			result, err := stream.Recv()
 			if err != nil {
 				errChan <- fmt.Errorf("error receiving from stream: %v", err)
 				return
 			}
-
 			// Write to appropriate output
-			switch result.Data.(type) {
-			case *pb.Result_Stderr:
-				if _, err := os.Stderr.Write(result.Data.(*pb.Result_Stderr).Stderr); err != nil {
+			switch result.Flag {
+			case pb.Flag_MSG_STDERR:
+				if _, err := os.Stderr.Write(result.Data); err != nil {
 					errChan <- fmt.Errorf("error writing to stderr: %v", err)
 					return
 				}
-			case *pb.Result_Stdout:
-				if _, err := os.Stdout.Write(result.Data.(*pb.Result_Stdout).Stdout); err != nil {
+			case pb.Flag_MSG_STDOUT:
+				if _, err := os.Stdout.Write(result.Data); err != nil {
 					errChan <- fmt.Errorf("error writing to stdout: %v", err)
 					return
 				}
+			case pb.Flag_EOF_STDERR:
+				eof_stderr = true
+				os.Stderr.Close()
+			case pb.Flag_EOF_STDOUT:
+				eof_stdout = true
+				os.Stdout.Close()
 			}
 		}
 	}()
@@ -123,4 +132,6 @@ func main() {
 			log.Fatal(err)
 		}
 	}
+
+	stream.CloseSend()
 }

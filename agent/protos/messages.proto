@@ -6,29 +6,32 @@ option go_package = "grpcsh/pb";
 message Message {
   string from = 1;
   string to = 2;
-  oneof data {
-    string command = 3;
-    bytes stdin = 4;
-  }
+  Flag flag = 3;
+  bytes data = 4;
 }
 
 message Result {
   string from = 1;
   string to = 2;
-  oneof data {
-    bytes stdout = 3;
-    bytes stderr = 4;
-  }
+  Flag flag = 3;
+  bytes data = 4;
 }
 
 message PeerMessage {
   string channel = 1;
   string from = 2;
   string to = 3;
-  oneof data {
-    string command = 4;
-    bytes stdin = 5;
-    bytes stdout = 6;
-    bytes stderr = 7;
-  }
+  Flag flag = 4;
+  bytes data = 5;
+}
+
+enum Flag {
+  NONE = 0;
+  COMMAND = 1;
+  MSG_STDIN = 2;
+  MSG_STDOUT = 3;
+  MSG_STDERR = 4;
+  EOF_STDIN = 5;
+  EOF_STDOUT = 6;
+  EOF_STDERR = 7;
 }

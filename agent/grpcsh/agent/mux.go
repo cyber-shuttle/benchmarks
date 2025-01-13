@@ -27,7 +27,7 @@ func CreateBus(stream pb.RouterService_ConnectClient) *Bus {
 			if err != nil {
 				return
 			}
-			if _, ok := peerMessage.Data.(*pb.PeerMessage_Command); ok {
+			if peerMessage.Flag == pb.Flag_COMMAND {
 				b.intercept <- peerMessage
 			} else {
 				c := peerMessage.Channel
