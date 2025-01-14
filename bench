@@ -1,17 +1,43 @@
 #!/usr/bin/env bash
 
-SSH_CONN=ssh
-SSH_PROXY_ADDR=ubuntu@3.142.234.94
-SSH_REMOTE_ADDR=ubuntu@3.142.234.94
+# REMOTES
+# [remote] ubuntu@3.142.213.140
+# [api/proxy/router] ubuntu@3.15.162.26
+# [client] ubuntu@3.15.209.252
 
-AGENT_CONN=agent
-AGENT_API_URL=https://api.gateway.cybershuttle.org/api/v1/agent
+# INFRA SETUP
+
+# [router] (ubuntu@3.15.162.26)
+#   scp agent/bin/router_amd64 ubuntu@3.15.162.26:~/router
+#   ssh ubuntu@3.15.162.26
+#   tmux
+#   ./router -r 0.0.0.0:50051
+
+# [remote] (ubuntu@3.142.213.140)
+#   scp agent/bin/agent_amd64 ubuntu@3.142.213.140:~/agent
+#   ssh ubuntu@3.142.213.140
+#   tmux
+#   ./agent -r 3.15.162.26:50051 -i 1 -s $(pwd)/agent.sock
+
+# [local]
+#   cd agent
+#   ./bin/agent -r 3.15.162.26:50051 -i local -s $(pwd)/agent.sock
+
+SSH_PROXY_ADDR=ubuntu@3.15.162.26
+SSH_REMOTE_ADDR=ubuntu@3.142.213.140
+
+AGENT_API_URL=http://3.15.162.26:18880/api/v1/agent
 AGENT_ID=abcde
 
-# for size in 2 4 8 16 32 64 128 256 512 1024 2048 4096 8192; do
-#   ./micro.py --conn=$SSH_CONN --proxy=$SSH_PROXY_ADDR --remote=$SSH_REMOTE_ADDR --task=bench --reps=50 --size=$size --dest=home_idle_ssh.jsonl
-# done
+GRPC_CLI=$(pwd)/agent/bin/grpcsh
+GRPC_SOCK=$(pwd)/agent/agent.sock
+GRPC_PEER=1
 
 for size in 2 4 8 16 32 64 128 256 512 1024 2048 4096 8192; do
-  ./micro.py --conn=$AGENT_CONN --api=$AGENT_API_URL --agent=$AGENT_ID --task=bench --reps=50 --size=$size --dest=home_idle_agent.jsonl
+  # SSH connection
+  ./micro.py --conn=ssh --proxy=$SSH_PROXY_ADDR --remote=$SSH_REMOTE_ADDR --task=bench --reps=50 --size=$size --dest=idle_ssh.jsonl
+  # Agent connection
+  # ./micro.py --conn=agent --api=$AGENT_API_URL --agent=$AGENT_ID --task=bench --reps=50 --size=$size --dest=idle_agent.jsonl
+  # gRPCsh connection
+  ./micro.py --conn=grpc --cli=$GRPC_CLI --sock=$GRPC_SOCK --peer=$GRPC_PEER --task=bench --reps=50 --size=$size --dest=idle_grpc.jsonl
 done

@@ -25,6 +25,13 @@ build_grpcsh:
 	go build -o ../bin/grpcsh grpcsh.go; \
 	cd ..
 
+build_amd64:
+	mkdir -p bin; \
+	cd grpcsh; \
+	GOOS=linux GOARCH=amd64 go build -o ../bin/router_amd64 router.go; \
+	GOOS=linux GOARCH=amd64 go build -o ../bin/agent_amd64 agent.go; \
+	cd ..
+
 build: build_router build_agent build_grpcsh
 
 start_router:

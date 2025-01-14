@@ -9,7 +9,7 @@ import time
 
 import rich.progress
 
-from sdk import SDK, SSHSDK, AgentSDK
+from sdk import SDK, SSHSDK, AgentSDK, gRPCSDK
 
 
 def test_latency(sdk: SDK, task: str, size_kb: int, reps: int, warmup=0.1) -> float:
@@ -101,11 +101,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     
     # args for connection
-    parser.add_argument("--conn", type=str, choices=["agent", "ssh"], required=True, help="Connection Type")
+    parser.add_argument("--conn", type=str, choices=["agent", "ssh", "grpc"], required=True, help="Connection Type")
     parser.add_argument("--api", type=str, help="[Agent] API URL")
     parser.add_argument("--agent", type=str, help="[Agent] Agent ID")
     parser.add_argument("--proxy", type=str, help="[SSH] Proxy Addr (user@hostname)")
     parser.add_argument("--remote", type=str, help="[SSH] Remote Addr (user@hostname)")
+    parser.add_argument("--cli", type=str, help="[gRPC] CLI Path")
+    parser.add_argument("--sock", type=str, help="[gRPC] Sock Path")
+    parser.add_argument("--peer", type=str, help="[gRPC] Remote ID")
     
     # args for task
     parser.add_argument("--task", type=str, choices=["bench", "load"], required=True, help="Task to perform")
@@ -129,8 +132,13 @@ if __name__ == "__main__":
         assert args.proxy is not None
         assert args.remote is not None
         sdk = SSHSDK(args.proxy, args.remote)
+    elif args.conn == "grpc":
+        assert args.cli is not None
+        assert args.sock is not None
+        assert args.peer is not None
+        sdk = gRPCSDK(args.cli, args.sock, args.peer)
     else:
-        raise ValueError("Invalid connection type. Choose 'agent' or 'ssh'.")
+        raise ValueError("Invalid connection type. Choices=['agent', 'ssh', 'grpc']")
     
     if args.task == "bench":
         # run tests
