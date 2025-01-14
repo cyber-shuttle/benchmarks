@@ -24,7 +24,7 @@ type executorServer struct {
 var bus *Bus
 var channelSvcClient pb.ChannelServiceClient
 var selfId string
-var bufsize = 1024
+var bufsize = 1 * 1024 * 1024
 
 func (s *executorServer) Exec(stream pb.ExecutorService_ExecServer) error {
 	log.Printf("[%s] received Exec command\n", selfId)
