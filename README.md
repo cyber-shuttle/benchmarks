@@ -20,5 +20,6 @@ options:
 
 examples:
 ./micro.py --conn=ssh --proxy=ubuntu@3.142.234.94 --remote=ubuntu@3.142.234.94 --task=bench --size=64 --reps=100
+./micro.py --conn=ssh --proxy=ubuntu@3.142.234.94 --remote=ubuntu@3.142.234.94 --task=load --size=64 --rate=1
 
 ```
