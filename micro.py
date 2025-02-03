@@ -76,24 +76,60 @@ def test_thruput(sdk: SDK, task: str, size_kb: int, reps: int, warmup=0.1) -> fl
     return thruput
 
 
+def test_command_execution(sdk: SDK, command: str, reps: int, warmup=0.1) -> float:
+    """
+    Measure the execution latency of a remote command.
+    """
+    latencies = []
+    progress = rich.progress.Progress()
+    progress.start()
+    prog_bar = progress.add_task("Command Execution Latency", total=reps)
+    r = int(reps * warmup)
+    counter = 0
+
+    while counter != reps:
+        start_time = time.time_ns()
+        stdout, stderr = sdk.exec(command, b"")
+        end_time = time.time_ns()
+        progress.update(prog_bar, advance=1)
+        counter += 1
+
+        if counter >= r:
+            latencies.append((end_time - start_time) / 1e9)
+
+    avg_latency = sum(latencies) / len(latencies)
+    progress.stop()
+    return avg_latency
+
+
 def test_load(sdk: SDK, size_kb: int, rate: int):
     """
-    Load the system
+    Load the system with Gaussian-distributed inter-request intervals
     
     """
     progress = rich.progress.Progress()
     progress.start()
     prog_bar = progress.add_task("Load", total=None)
     sdk.setup(size_kb)
-    while True:
-        fn = lambda: random.choice([sdk.uload, sdk.dload])(size_kb)
-        start_time = time.time_ns()
-        fn()
-        progress.update(prog_bar, advance=1)
-        end_time = time.time_ns()
-        duration = (end_time - start_time) / 1e9
-        time.sleep(max(0, 1/rate - duration))
-    sdk.teardown()
+
+    mu = 1 / rate
+    sigma = mu * 0.1
+
+    try:
+        while True:
+            fn = lambda: random.choice([sdk.uload, sdk.dload])(size_kb)
+            start_time = time.time_ns()
+            fn()
+            progress.update(prog_bar, advance=1)
+            end_time = time.time_ns()
+            duration = (end_time - start_time) / 1e9
+            sleep_time = max(0, random.gauss(mu, sigma) - duration)
+            time.sleep(sleep_time)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        sdk.teardown()
+        progress.stop()
 
 
 if __name__ == "__main__":
@@ -115,6 +151,7 @@ if __name__ == "__main__":
     parser.add_argument("--size", type=int, default=32, help="[Bench] Payload size (KB)")
     parser.add_argument("--reps", type=int, default=100, help="[Bench] Number of repetitions")
     parser.add_argument("--rate", type=int, default=1, help="[Load] Request rate (req/s)")
+    parser.add_argument("--cmd", type=str, help="Command to execute for CMD task")
 
     # args to save results
     parser.add_argument("--dest", type=str, help="Destination to save results")
@@ -163,5 +200,13 @@ if __name__ == "__main__":
     elif args.task == "load":
         print("Creating Load...")
         test_load(sdk, args.size, args.rate)
+    elif args.task == "cmd":
+        if not args.cmd:
+            raise ValueError("Command must be provided for CMD task")
+        latency_cmd = test_command_execution(sdk, args.cmd, args.reps)
+        result = dict(command=args.cmd, latency_cmd=latency_cmd)
+        with open(args.dest, "a") as f:
+            f.write(json.dumps(result) + "\n")
+        print(f"Command Execution Latency: {latency_cmd:.6f} s")
     else:
         raise ValueError("Invalid task. Choose 'bench' or 'load'.")
