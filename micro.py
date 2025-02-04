@@ -102,24 +102,21 @@ def test_command_execution(sdk: SDK, command: str, reps: int, warmup=0.1) -> flo
     return avg_latency
 
 
-def test_load(sdk: SDK, size_kb: int, rate: int):
+def test_load(sdk: SDK, command: str, rate: int):
     """
-    Load the system with Gaussian-distributed inter-request intervals
-    
+    Load the system by executing a specified command with Gaussian-distributed inter-request intervals.
     """
     progress = rich.progress.Progress()
     progress.start()
     prog_bar = progress.add_task("Load", total=None)
-    sdk.setup(size_kb)
 
     mu = 1 / rate
     sigma = mu * 0.1
 
     try:
         while True:
-            fn = lambda: random.choice([sdk.uload, sdk.dload])(size_kb)
             start_time = time.time_ns()
-            fn()
+            stdout, stderr = sdk.exec(command, b"")
             progress.update(prog_bar, advance=1)
             end_time = time.time_ns()
             duration = (end_time - start_time) / 1e9
@@ -128,7 +125,6 @@ def test_load(sdk: SDK, size_kb: int, rate: int):
     except KeyboardInterrupt:
         pass
     finally:
-        sdk.teardown()
         progress.stop()
 
 
@@ -148,7 +144,7 @@ if __name__ == "__main__":
     
     # args for task
     parser.add_argument("--task", type=str, choices=["bench", "load"], required=True, help="Task to perform")
-    parser.add_argument("--size", type=int, default=32, help="[Bench] Payload size (KB)")
+    parser.add_argument("--cmd", type=str, help="[Load] Command to execute during load testing")
     parser.add_argument("--reps", type=int, default=100, help="[Bench] Number of repetitions")
     parser.add_argument("--rate", type=int, default=1, help="[Load] Request rate (req/s)")
     parser.add_argument("--cmd", type=str, help="Command to execute for CMD task")
@@ -199,7 +195,7 @@ if __name__ == "__main__":
         print(f"{latency_ul:.6f},{latency_dl:.6f},{thruput_ul:.6f},{thruput_dl:.6f}")
     elif args.task == "load":
         print("Creating Load...")
-        test_load(sdk, args.size, args.rate)
+        test_load(sdk, args.cmd, args.rate)
     elif args.task == "cmd":
         if not args.cmd:
             raise ValueError("Command must be provided for CMD task")
