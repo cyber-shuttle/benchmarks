@@ -17,9 +17,29 @@ options:
   --size SIZE          Payload size (KB)
   --reps REPS          [Bench] Number of repetitions
   --rate RATE          [Load] Request rate (req/s)
+```
 
-examples:
-./micro.py --conn=ssh --proxy=ubuntu@3.142.234.94 --remote=ubuntu@3.142.234.94 --task=bench --size=64 --reps=100
-./micro.py --conn=ssh --proxy=ubuntu@3.142.234.94 --remote=ubuntu@3.142.234.94 --task=load --size=64 --rate=1
+## Examples
+### Compute
+```shell
+./agent_amd64 -r 3.15.162.26:50051 -i agent_id_887 -s /home/ubuntu/agent_id_887.sock
+```
 
+### Router
+```shell
+./router -r 0.0.0.0:50051
+```
+
+### Client
+#### Load
+```shell
+./agent_amd64 -r 3.15.162.26:50051 -i agent_id_887_load -s /home/ubuntu/agent_id_887_load.sock
+./micro.py --conn=grpc --cli=/home/ubuntu/grpcsh_amd64 --sock=/home/ubuntu/agent_id_887_load.sock --peer=agent_id_887 --task=load --cmd="echo Simulating Load" --rate 1
+```
+
+#### BM
+```shell
+
+./agent_amd64 -r 3.15.162.26:50051 -i agent_id_887_bm -s /home/ubuntu/agent_id_887_bm.sock
+./micro.py --conn=grpc --cli=/home/ubuntu/grpcsh_amd64 --sock=/home/ubuntu/agent_id_887_bm.sock --peer=agent_id_887 --task=cmd --cmd="echo Benchmarking Command" --reps=10 --dest=/home/ubuntu/results.jsonl
 ```

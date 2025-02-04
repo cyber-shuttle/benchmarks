@@ -143,11 +143,10 @@ if __name__ == "__main__":
     parser.add_argument("--peer", type=str, help="[gRPC] Remote ID")
     
     # args for task
-    parser.add_argument("--task", type=str, choices=["bench", "load"], required=True, help="Task to perform")
+    parser.add_argument("--task", type=str, choices=["bench", "load", "cmd"], required=True, help="Task to perform")
     parser.add_argument("--cmd", type=str, help="[Load] Command to execute during load testing")
     parser.add_argument("--reps", type=int, default=100, help="[Bench] Number of repetitions")
     parser.add_argument("--rate", type=int, default=1, help="[Load] Request rate (req/s)")
-    parser.add_argument("--cmd", type=str, help="Command to execute for CMD task")
 
     # args to save results
     parser.add_argument("--dest", type=str, help="Destination to save results")
