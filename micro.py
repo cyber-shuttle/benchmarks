@@ -76,33 +76,38 @@ def test_thruput(sdk: SDK, task: str, size_kb: int, reps: int, warmup=0.1) -> fl
     return thruput
 
 
-def test_command_execution(sdk: SDK, command: str, reps: int, warmup=0.1) -> float:
+def warmup_execution(sdk: SDK, command: str, warmup_reps: int) -> None:
     """
-    Measure the execution latency of a remote command.
+    Perform a one-time warm-up before running benchmarks.
     """
+    print(f"Warming up with {warmup_reps} executions...")
+    for _ in range(warmup_reps):
+        sdk.exec(command, b"")
+
+
+def test_command_execution(sdk: SDK, command: str, reps: int) -> dict:
+    """Measure the execution latency of a remote command after a global warm-up."""
     latencies = []
     progress = rich.progress.Progress()
     progress.start()
     prog_bar = progress.add_task("Command Execution Latency", total=reps)
-    r = int(reps * warmup)
-    counter = 0
 
-    while counter != reps:
+    for _ in range(reps):
         start_time = time.time_ns()
         stdout, stderr = sdk.exec(command, b"")
         end_time = time.time_ns()
         progress.update(prog_bar, advance=1)
-        counter += 1
+        latencies.append((end_time - start_time) / 1e9)
 
-        if counter >= r:
-            latencies.append((end_time - start_time) / 1e9)
-
-    avg_latency = sum(latencies) / len(latencies)
     progress.stop()
-    return avg_latency
+    return {
+        "command": command,
+        "mean_latency": sum(latencies) / len(latencies),
+        "median_latency": statistics.median(latencies)
+    }
 
 
-def test_load(sdk: SDK, command: str, rate: int):
+def test_load(sdk: SDK, command: str, rate: int, dest: str):
     """
     Load the system by executing a specified command with Gaussian-distributed inter-request intervals.
     """
@@ -112,20 +117,34 @@ def test_load(sdk: SDK, command: str, rate: int):
 
     mu = 1 / rate
     sigma = mu * 0.1
+    inter_request_intervals = []
 
     try:
+        last_request_time = time.time_ns()
         while True:
             start_time = time.time_ns()
             stdout, stderr = sdk.exec(command, b"")
             progress.update(prog_bar, advance=1)
             end_time = time.time_ns()
             duration = (end_time - start_time) / 1e9
+
+            # Calculate actual inter-request interval
+            current_time = time.time_ns()
+            inter_request_interval = (current_time - last_request_time) / 1e9
+            inter_request_intervals.append(inter_request_interval)
+            last_request_time = current_time
+
+            # Compute next sleep time
             sleep_time = max(0, random.gauss(mu, sigma) - duration)
             time.sleep(sleep_time)
     except KeyboardInterrupt:
         pass
     finally:
         progress.stop()
+        # Save actual inter-request intervals to file
+        with open(dest, "a") as f:
+            for interval in inter_request_intervals:
+                f.write(json.dumps({"inter_request_interval": interval}) + "\n")
 
 
 if __name__ == "__main__":
@@ -147,6 +166,7 @@ if __name__ == "__main__":
     parser.add_argument("--cmd", type=str, help="[Load] Command to execute during load testing")
     parser.add_argument("--reps", type=int, default=100, help="[Bench] Number of repetitions")
     parser.add_argument("--rate", type=int, default=1, help="[Load] Request rate (req/s)")
+    parser.add_argument("--warmup_reps", type=int, default=10, help="Number of warm-up executions")
 
     # args to save results
     parser.add_argument("--dest", type=str, help="Destination to save results")
@@ -194,14 +214,16 @@ if __name__ == "__main__":
         print(f"{latency_ul:.6f},{latency_dl:.6f},{thruput_ul:.6f},{thruput_dl:.6f}")
     elif args.task == "load":
         print("Creating Load...")
-        test_load(sdk, args.cmd, args.rate)
+        test_load(sdk, args.cmd, args.rate, args.dest)
     elif args.task == "cmd":
         if not args.cmd:
             raise ValueError("Command must be provided for CMD task")
-        latency_cmd = test_command_execution(sdk, args.cmd, args.reps)
-        result = dict(command=args.cmd, latency_cmd=latency_cmd)
+        warmup_execution(sdk, args.cmd, args.warmup_reps)
+        result = test_command_execution(sdk, args.cmd, args.reps)
         with open(args.dest, "a") as f:
             f.write(json.dumps(result) + "\n")
-        print(f"Command Execution Latency: {latency_cmd:.6f} s")
+
+        print(f"Command Execution - Mean Latency: {result['mean_latency']:.6f} s")
+        print(f"Command Execution - Median Latency: {result['median_latency']:.6f} s")
     else:
         raise ValueError("Invalid task. Choose 'bench' or 'load'.")
