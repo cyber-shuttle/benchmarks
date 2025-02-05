@@ -43,3 +43,8 @@ options:
 ./agent_amd64 -r 3.15.162.26:50051 -i agent_id_887_bm -s /home/ubuntu/agent_id_887_bm.sock
 ./micro.py --conn=grpc --cli=/home/ubuntu/grpcsh_amd64 --sock=/home/ubuntu/agent_id_887_bm.sock --peer=agent_id_887 --task=cmd --cmd="echo Benchmarking Command" --reps=10 --dest=/home/ubuntu/results.jsonl
 ```
+
+#### Multi-Agent BM
+```shell
+./multi_agent_benchmark.py --server_address=3.15.162.26:50051 --command="echo Hello CyberShuttle!" --duration=5 --max_agents=3 --dest=/home/ubuntu/results.jsonl --num_executions=5
+```
