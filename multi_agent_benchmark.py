@@ -2,15 +2,10 @@
 
 import argparse
 import json
-import matplotlib
 import numpy as np
 import os
-import pandas as pd
 import subprocess
 import time
-
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from sdk import gRPCSDK
@@ -47,6 +42,29 @@ def run_micro(agent_id, sock_file, peer_id, command, duration, num_executions):
     return latencies
 
 
+def warmup(server_address, duration, num_executions):
+    """
+    Perform a one-time warmup before running benchmarks
+    """
+    agent_id = f"client_agent_warmup"
+    peer_id = f"agent_warmup"
+    sock_file = f"/home/ubuntu/{agent_id}.sock"
+
+    agent_process = start_agent(agent_id, sock_file, server_address)
+    sdk = gRPCSDK(cli="/home/ubuntu/benchmarks/grpcsh_amd64", sock=sock_file, peer=peer_id)
+    interval = duration / num_executions
+
+    try:
+        for _ in range(num_executions):
+            sdk.exec(command, b"")
+            time.sleep(interval)
+        print(f"Warmup completed successfully with {num_executions} executions over {duration} seconds!")
+    finally:
+        agent_process.terminate()
+        agent_process.wait()
+        print(f"Warm-up agent terminated!")
+
+
 def aggregate_statistics(latencies):
     """
     Calculate mean, median, 90th percentile, and 95th percentile latencies
@@ -73,36 +91,14 @@ def aggregate_statistics(latencies):
     }
 
 
-def plot_results(results, dest):
-    """
-    Plot the latency statistics against the number of agents
-    """
-    df = pd.DataFrame(results)
-
-    plt.figure(figsize=(10, 6))
-    plt.plot(df['num_agents'], df['mean_latency'], marker='o', label='Mean Latency')
-    plt.plot(df['num_agents'], df['median_latency'], marker='o', label='Median Latency')
-    plt.plot(df['num_agents'], df['p90_latency'], marker='o', label='90th Percentile Latency')
-    plt.plot(df['num_agents'], df['p95_latency'], marker='o', label='95th Percentile Latency')
-
-    plt.xticks(df['num_agents'])
-    plt.xlabel('Number of Agents')
-    plt.ylabel('Latency (milliseconds)')
-    plt.title('Latency Metrics vs. Number of Agents')
-    plt.legend()
-    plt.grid(True)
-
-    plot_file = os.path.splitext(dest)[0] + "_latency_metrics_plot.png"
-    plt.savefig(plot_file)
-    plt.close()
-
-    print(f"Plot saved to {plot_file}")
-
-
 def main(server_address, command, duration, max_agents, num_executions, dest):
     agents = []
     results = []
     os.makedirs(os.path.dirname(dest), exist_ok=True)
+
+    print(f"Starting warmup phase with duration: {duration}s and number of executions: {num_executions}.")
+    warmup(server_address, command, duration, num_executions)
+    print(f"Warmup phase completed. Proceeding with the benchmark.")
 
     # Start all agents without executing commands
     for i in range(1, max_agents + 1):
@@ -142,8 +138,6 @@ def main(server_address, command, duration, max_agents, num_executions, dest):
         agent.terminate()
         agent.wait()
     print(f"Terminated the agents")
-
-    plot_results(results, dest)
 
 
 if __name__ == "__main__":
