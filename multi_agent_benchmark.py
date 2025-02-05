@@ -2,10 +2,15 @@
 
 import argparse
 import json
+import matplotlib
 import numpy as np
 import os
+import pandas as pd
 import subprocess
 import time
+
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from sdk import gRPCSDK
@@ -36,7 +41,7 @@ def run_micro(agent_id, sock_file, peer_id, command, duration, num_executions):
         req_start = time.time_ns()
         stdout, stderr = sdk.exec(command, b"")
         req_end = time.time_ns()
-        latencies.append((req_end - req_start) / 1e9)  # To seconds
+        latencies.append((req_end - req_start) / 1e6)  # To milliseconds
         time.sleep(interval)
 
     return latencies
@@ -66,6 +71,32 @@ def aggregate_statistics(latencies):
         "p90_latency": p90_latency,
         "p95_latency": p95_latency
     }
+
+
+def plot_results(results, dest):
+    """
+    Plot the latency statistics against the number of agents
+    """
+    df = pd.DataFrame(results)
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(df['num_agents'], df['mean_latency'], marker='o', label='Mean Latency')
+    plt.plot(df['num_agents'], df['median_latency'], marker='o', label='Median Latency')
+    plt.plot(df['num_agents'], df['p90_latency'], marker='o', label='90th Percentile Latency')
+    plt.plot(df['num_agents'], df['p95_latency'], marker='o', label='95th Percentile Latency')
+
+    plt.xticks(df['num_agents'])
+    plt.xlabel('Number of Agents')
+    plt.ylabel('Latency (milliseconds)')
+    plt.title('Latency Metrics vs. Number of Agents')
+    plt.legend()
+    plt.grid(True)
+
+    plot_file = os.path.splitext(dest)[0] + "_latency_metrics_plot.png"
+    plt.savefig(plot_file)
+    plt.close()
+
+    print(f"Plot saved to {plot_file}")
 
 
 def main(server_address, command, duration, max_agents, num_executions, dest):
@@ -111,6 +142,8 @@ def main(server_address, command, duration, max_agents, num_executions, dest):
         agent.terminate()
         agent.wait()
     print(f"Terminated the agents")
+
+    plot_results(results, dest)
 
 
 if __name__ == "__main__":
