@@ -2,10 +2,12 @@
 
 import argparse
 import matplotlib.pyplot as plt
+import numpy as np
+import os
 import pandas as pd
 
 
-def plot_results(input_file, output_file):
+def plot_latency_results(input_file, output_dir):
     """
     Plot the latency statistics against the number of agents
     """
@@ -28,23 +30,78 @@ def plot_results(input_file, output_file):
     plt.plot(df['num_agents'], df['p95_latency'], marker='o', label='95th Percentile Latency')
 
     # plt.xticks(df['num_agents'])
-    plt.xticks(df['num_agents'][::5])
+    plt.xticks(df['num_agents'][::10])
     plt.xlabel('Number of Agents')
     plt.ylabel('Latency (milliseconds)')
     plt.title('Latency Metrics vs. Number of Agents')
     plt.legend()
     plt.grid(True)
 
+    output_file = os.path.join(output_dir, "latency_results.png")
     plt.savefig(output_file)
     plt.close()
 
-    print(f"Plot saved to {output_file}")
+    print(f"Latency results plot saved to {output_file}")
+
+
+def plot_latency_distribution(input_file, num_agents, output_dir):
+    """
+    Plot the latency distribution for a specific number of agents
+    """
+    try:
+        df = pd.read_json(input_file, lines=True)
+    except ValueError as e:
+        print(f"Error reading the input file {input_file}: {e}")
+        return
+
+    # Filter data for the specified number of agents
+    filtered_df = df[df['num_agents'] == num_agents]
+    if filtered_df.empty:
+        print(f"No data found for {num_agents} agents.")
+        return
+
+    latencies = []
+    if 'latencies' in filtered_df.columns:
+        latencies = filtered_df.iloc[0]['latencies']
+    else:
+        print(f"Latencies data missing for {num_agents} agents.")
+        return
+
+    # Calculate key metrics
+    mean_latency = np.mean(latencies)
+    median_latency = np.median(latencies)
+    p90_latency = np.percentile(latencies, 90)
+    p95_latency = np.percentile(latencies, 95)
+
+    plt.figure(figsize=(10, 6))
+    plt.hist(latencies, bins=20, alpha=0.7, color='skyblue', edgecolor='black', label='Latencies')
+
+    plt.axvline(mean_latency, color='blue', linestyle='--', label=f'Mean ({mean_latency:.2f} ms)')
+    plt.axvline(median_latency, color='orange', linestyle='--', label=f'Median ({median_latency:.2f} ms)')
+    plt.axvline(p90_latency, color='green', linestyle='--', label=f'90th Percentile ({p90_latency:.2f} ms)')
+    plt.axvline(p95_latency, color='red', linestyle='--', label=f'95th Percentile ({p95_latency:.2f} ms)')
+
+    plt.title(f'Latency Distribution for {num_agents} Agents')
+    plt.xlabel('Latency (ms)')
+    plt.ylabel('Frequency')
+    plt.legend()
+    plt.grid(True)
+
+    output_file = os.path.join(output_dir, f"latency_distribution_{num_agents}_agents.png")
+    plt.savefig(output_file)
+    plt.close()
+    print(f"Latency distribution plot for {num_agents} agents saved to {output_file}")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot Latency Metrics")
     parser.add_argument("--input_file", type=str, required=True, help="Input JSONL file containing results")
-    parser.add_argument("--output_file", type=str, required=True, help="Output PNG file for the plot")
+    parser.add_argument("--output", type=str, required=True, help="Output location for the plots")
+    parser.add_argument("--num_agents", type=int, required=True,
+                        help="Number of agents to analyze for latency distribution")
     args = parser.parse_args()
 
-    plot_results(args.input_file, args.output_file)
+    os.makedirs(args.output, exist_ok=True)
+
+    plot_latency_results(args.input_file, args.output)
+    plot_latency_distribution(args.input_file, args.num_agents, args.output)

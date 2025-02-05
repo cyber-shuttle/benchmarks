@@ -42,7 +42,7 @@ def run_micro(agent_id, sock_file, peer_id, command, duration, num_executions):
     return latencies
 
 
-def warmup(server_address, duration, num_executions):
+def warmup(server_address, command, duration, num_executions):
     """
     Perform a one-time warmup before running benchmarks
     """
@@ -74,7 +74,8 @@ def aggregate_statistics(latencies):
             "mean_latency": 0,
             "median_latency": 0,
             "p90_latency": 0,
-            "p95_latency": 0
+            "p95_latency": 0,
+            "latencies": []
         }
 
     latencies = np.array(latencies)
@@ -87,13 +88,13 @@ def aggregate_statistics(latencies):
         "mean_latency": mean_latency,
         "median_latency": median_latency,
         "p90_latency": p90_latency,
-        "p95_latency": p95_latency
+        "p95_latency": p95_latency,
+        "latencies": latencies.tolist()
     }
 
 
 def main(server_address, command, duration, max_agents, num_executions, dest):
     agents = []
-    results = []
     os.makedirs(os.path.dirname(dest), exist_ok=True)
 
     print(f"Starting warmup phase with duration: {duration}s and number of executions: {num_executions}.")
@@ -126,9 +127,8 @@ def main(server_address, command, duration, max_agents, num_executions, dest):
 
             stats = aggregate_statistics(all_latencies)
             stats["num_agents"] = i
-            results.append(stats)
 
-            # Save intermediate results
+            # Save results
             with open(dest, "a") as f:
                 f.write(json.dumps(stats) + "\n")
 
