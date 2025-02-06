@@ -48,3 +48,21 @@ options:
 ```shell
 ./multi_agent_benchmark.py --server_address=3.15.162.26:50051 --command="echo Hello CyberShuttle!" --duration=5 --max_agents=3 --dest=/home/ubuntu/results.jsonl --num_executions=5
 ```
+
+#### Load Agent BM
+```shell
+./agent_load_benchmark.py --server_address=3.15.162.26:50051 --command="echo Hello CyberShuttle!" --duration=10 --max_request_rate=100 --request_step=10  --dest=/home/ubuntu/results
+```
+
+
+#### Plots
+````shell
+./plot_results.py --input_file=./results.jsonl --output ./plots --num_agents 100
+````
+```shell
+./plot_agent_load_benchmark.py --benchmark_file=./results_benchmark.jsonl --gaussian_file=./results_gaussian.jsonl --output=./plots --request_rate=100
+```
+```shell
+./plot_agent_load_benchmark.py --benchmark_file=./results_benchmark.jsonl --output=./plots2 --request_rate=100
+
+```
