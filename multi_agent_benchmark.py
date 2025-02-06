@@ -34,7 +34,7 @@ def run_micro(agent_id, sock_file, peer_id, command, duration, num_executions):
 
     for _ in range(num_executions):
         req_start = time.time_ns()
-        stdout, stderr = sdk.exec(command, b"")
+        sdk.exec(command, b"")
         req_end = time.time_ns()
         latencies.append((req_end - req_start) / 1e6)  # To milliseconds
         time.sleep(interval)

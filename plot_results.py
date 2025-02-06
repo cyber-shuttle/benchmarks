@@ -31,9 +31,9 @@ def plot_latency_results(input_file, output_dir):
 
     # plt.xticks(df['num_agents'])
     plt.xticks(df['num_agents'][::10])
-    plt.xlabel('Number of Agents')
+    plt.xlabel('Number of Clients')
     plt.ylabel('Latency (milliseconds)')
-    plt.title('Latency Metrics vs. Number of Agents')
+    plt.title('Latency Metrics vs. Number of Clients')
     plt.legend()
     plt.grid(True)
 
@@ -81,7 +81,7 @@ def plot_latency_distribution(input_file, num_agents, output_dir):
     plt.axvline(p90_latency, color='green', linestyle='--', label=f'90th Percentile ({p90_latency:.2f} ms)')
     plt.axvline(p95_latency, color='red', linestyle='--', label=f'95th Percentile ({p95_latency:.2f} ms)')
 
-    plt.title(f'Latency Distribution for {num_agents} Agents')
+    plt.title(f'Latency Distribution for {num_agents} Clients')
     plt.xlabel('Latency (ms)')
     plt.ylabel('Frequency')
     plt.legend()
