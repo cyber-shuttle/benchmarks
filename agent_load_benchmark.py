@@ -7,6 +7,8 @@ import os
 import random
 import subprocess
 import time
+import multiprocessing
+from multiprocessing import Lock
 
 from sdk import gRPCSDK
 
@@ -64,7 +66,7 @@ def gaussian_load(server_address, command, request_rate, duration, dest):
     print(f"Load generation for {request_rate} req/s completed.")
 
 
-def run_benchmark(server_address, command, duration, dest, request_rate):
+def run_benchmark(server_address, command, duration, dest, request_rate, lock):
     """
     The benchmark agent runs at a **fixed 1 request per second.** under the load condition
     """
@@ -95,20 +97,21 @@ def run_benchmark(server_address, command, duration, dest, request_rate):
         agent_process.terminate()
         agent_process.wait()
 
-    with open(dest, "a") as f:
-        f.write(json.dumps({
-            "load_request_rate": request_rate,
-            "mean_latency": np.mean(latencies) if latencies else 0,
-            "median_latency": np.median(latencies) if latencies else 0,
-            "p90_latency": np.percentile(latencies, 90) if latencies else 0,
-            "p95_latency": np.percentile(latencies, 95) if latencies else 0,
-            "latencies": latencies
-        }) + "\n")
+    with lock:
+        with open(dest, "a") as f:
+            f.write(json.dumps({
+                "load_request_rate": request_rate,
+                "mean_latency": np.mean(latencies) if latencies else 0,
+                "median_latency": np.median(latencies) if latencies else 0,
+                "p90_latency": np.percentile(latencies, 90) if latencies else 0,
+                "p95_latency": np.percentile(latencies, 95) if latencies else 0,
+                "latencies": latencies
+            }) + "\n")
 
     print(f"Benchmark completed and saved to {dest}.")
 
 
-def warmup(server_address, command, duration):
+def warmup(server_address, command):
     """
     Perform a warm-up before benchmarking
     """
@@ -120,30 +123,40 @@ def warmup(server_address, command, duration):
 
     start_time = time.time()
     try:
-        while (time.time() - start_time) < duration:
+        for _ in range(120):
             sdk.exec(command, b"")
-            time.sleep(1)  # Constant warm-up rate (1 req/s)
-        print("Warm-up phase completed.")
+            time.sleep(1)
+        print("Warmup completed successfully with 120 executions over 120 seconds!")
     finally:
         agent_process.terminate()
         agent_process.wait()
+        print("Warm-up agent terminated!")
 
 
 def main(server_address, command, duration, max_request_rate, request_step, dest):
     os.makedirs(os.path.dirname(dest), exist_ok=True)
+    lock = Lock()
 
     print(f"Starting warm-up phase...")
-    warmup(server_address, command, duration)
+    warmup(server_address, command)
     print(f"Warm-up phase completed. Starting benchmarks...")
-
-    for request_rate in range(1, max_request_rate + 1, request_step):
+    start_time = time.time()
+    for request_rate in range(1, max_request_rate + request_step, request_step):
         print(f"Running Gaussian load at {request_rate} req/s...")
-        gaussian_load(server_address, command, request_rate, duration, dest + "_gaussian.jsonl")
+        gaussian_process = multiprocessing.Process(target=gaussian_load, args=(server_address, command, request_rate, duration, dest + "_gaussian.jsonl"))
 
         print(f"Running benchmark under {request_rate} req/s background load...")
-        run_benchmark(server_address, command, duration, dest + "_benchmark.jsonl", request_rate)
+        benchmark_process = multiprocessing.Process(target=run_benchmark, args=(server_address, command, duration, dest + "_benchmark.jsonl", request_rate, lock))
+
+        gaussian_process.start()
+        benchmark_process.start()
+        gaussian_process.join()
+        benchmark_process.join()
 
     print(f"Benchmarking completed. Results saved to {dest}_gaussian.jsonl and {dest}_benchmark.jsonl")
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"Total time taken: {elapsed_time:.2f} seconds")
 
 
 if __name__ == "__main__":
