@@ -24,16 +24,16 @@ def plot_latency_results(input_file, output_dir):
         return
 
     plt.figure(figsize=(10, 6))
-    plt.plot(df['num_agents'], df['mean_latency'], marker='o', label='Mean Latency')
+    # plt.plot(df['num_agents'], df['mean_latency'], marker='o', label='Mean Latency')
     plt.plot(df['num_agents'], df['median_latency'], marker='o', label='Median Latency')
-    plt.plot(df['num_agents'], df['p90_latency'], marker='o', label='90th Percentile Latency')
-    plt.plot(df['num_agents'], df['p95_latency'], marker='o', label='95th Percentile Latency')
+    # plt.plot(df['num_agents'], df['p90_latency'], marker='o', label='90th Percentile Latency')
+    # plt.plot(df['num_agents'], df['p95_latency'], marker='o', label='95th Percentile Latency')
 
     # plt.xticks(df['num_agents'])
     plt.xticks(df['num_agents'][::10])
-    plt.xlabel('Number of Clients')
+    plt.xlabel('Number of Agent-Client Connections')
     plt.ylabel('Latency (milliseconds)')
-    plt.title('Latency Metrics vs. Number of Clients')
+    plt.title('Latency Metrics vs. Number of Agent-Client Connections')
     plt.legend()
     plt.grid(True)
 
@@ -76,12 +76,12 @@ def plot_latency_distribution(input_file, num_agents, output_dir):
     plt.figure(figsize=(10, 6))
     plt.hist(latencies, bins=20, alpha=0.7, color='skyblue', edgecolor='black', label='Latencies')
 
-    plt.axvline(mean_latency, color='blue', linestyle='--', label=f'Mean ({mean_latency:.2f} ms)')
+    # plt.axvline(mean_latency, color='blue', linestyle='--', label=f'Mean ({mean_latency:.2f} ms)')
     plt.axvline(median_latency, color='orange', linestyle='--', label=f'Median ({median_latency:.2f} ms)')
-    plt.axvline(p90_latency, color='green', linestyle='--', label=f'90th Percentile ({p90_latency:.2f} ms)')
-    plt.axvline(p95_latency, color='red', linestyle='--', label=f'95th Percentile ({p95_latency:.2f} ms)')
+    # plt.axvline(p90_latency, color='green', linestyle='--', label=f'90th Percentile ({p90_latency:.2f} ms)')
+    # plt.axvline(p95_latency, color='red', linestyle='--', label=f'95th Percentile ({p95_latency:.2f} ms)')
 
-    plt.title(f'Latency Distribution for {num_agents} Clients')
+    plt.title(f'Latency Distribution for {num_agents} Agent-Client Connections')
     plt.xlabel('Latency (ms)')
     plt.ylabel('Frequency')
     plt.legend()
