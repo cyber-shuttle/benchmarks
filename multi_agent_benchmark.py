@@ -109,6 +109,7 @@ def main(server_address, command, duration, max_agents, num_executions, dest):
         # Time for the agent to initialize
         time.sleep(2)
 
+    start_time = time.time()
     # Sequentially start command execution for each agent
     with ThreadPoolExecutor(max_workers=max_agents) as executor:
         for i in range(1, max_agents + 1):
@@ -132,6 +133,10 @@ def main(server_address, command, duration, max_agents, num_executions, dest):
                 f.write(json.dumps(stats) + "\n")
 
             print(f"Completed benchmark with {i} agent(s): {stats}")
+
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    print(f"Total time taken: {elapsed_time:.2f} seconds")
 
     for agent in agents:
         agent.terminate()

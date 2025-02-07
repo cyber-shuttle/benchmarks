@@ -35,7 +35,7 @@ def plot_latency_results(benchmark_file, output_dir):
     plt.legend()
     plt.grid(True)
 
-    output_file = os.path.join(output_dir, "latency_vs_gaussian_load.png")
+    output_file = os.path.join(output_dir, "latency_vs_gaussian_load.pdf")
     plt.savefig(output_file)
     plt.close()
 
@@ -84,7 +84,7 @@ def plot_latency_distribution(benchmark_file, request_rate, output_dir):
     plt.legend()
     plt.grid(True)
 
-    output_file = os.path.join(output_dir, f"latency_distribution_{request_rate}_reqs.png")
+    output_file = os.path.join(output_dir, f"latency_distribution_{request_rate}_reqs.pdf")
     plt.savefig(output_file)
     plt.close()
     print(f"Latency distribution plot for {request_rate} req/s saved to {output_file}")
