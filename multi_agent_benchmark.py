@@ -42,7 +42,7 @@ def run_micro(agent_id, sock_file, peer_id, command, duration, num_executions):
     return latencies
 
 
-def warmup(server_address, command, duration, num_executions):
+def warmup(server_address, command):
     """
     Perform a one-time warmup before running benchmarks
     """
@@ -52,17 +52,16 @@ def warmup(server_address, command, duration, num_executions):
 
     agent_process = start_agent(agent_id, sock_file, server_address)
     sdk = gRPCSDK(cli="/home/ubuntu/benchmarks/grpcsh_amd64", sock=sock_file, peer=peer_id)
-    interval = duration / num_executions
 
     try:
-        for _ in range(num_executions):
+        for _ in range(120):
             sdk.exec(command, b"")
-            time.sleep(interval)
-        print(f"Warmup completed successfully with {num_executions} executions over {duration} seconds!")
+            time.sleep(1)
+        print("Warmup completed successfully with 120 executions over 120 seconds!")
     finally:
         agent_process.terminate()
         agent_process.wait()
-        print(f"Warm-up agent terminated!")
+        print("Warm-up agent terminated!")
 
 
 def aggregate_statistics(latencies):
@@ -97,8 +96,8 @@ def main(server_address, command, duration, max_agents, num_executions, dest):
     agents = []
     os.makedirs(os.path.dirname(dest), exist_ok=True)
 
-    print(f"Starting warmup phase with duration: {duration}s and number of executions: {num_executions}.")
-    warmup(server_address, command, duration, num_executions)
+    print(f"Starting warmup phase with duration: 2 min and number of executions: 60")
+    warmup(server_address, command)
     print(f"Warmup phase completed. Proceeding with the benchmark.")
 
     # Start all agents without executing commands
